@@ -4,10 +4,17 @@ A recipe and shared-shopping-list web app. Paste a recipe (or upload a photo), a
 
 ## Features
 
-- **Recipe upload** — paste text or upload a photo. Claude parses it into structured ingredients + instructions.
-- **AI modification** — say what you want changed; Claude rewrites the recipe and saves it as a new version linked to the original.
-- **Shopping lists** — add one or many recipes to a list. Duplicate ingredients are consolidated by Claude (e.g. "2 cup flour" + "1 cup flour" → "3 cup flour") and grouped by store aisle.
-- **Real-time sharing** — invite your partner by email. Check items off at the store; the other phone updates instantly via Supabase Realtime.
+- **Recipe upload** — four input modes:
+  - Paste recipe text
+  - Link a URL (Claude fetches and parses the page)
+  - Upload a PDF (great for paywalled sites — Print → Save as PDF in the browser)
+  - Upload a photo
+- **AI modification** — say what you want changed; Claude rewrites the recipe and saves it as a new version linked to the original. Math (scaling, halving, unit conversion) is done via Claude's code execution tool, so the arithmetic is deterministic.
+- **Shopping lists** — add one or many recipes to a list. Duplicate ingredients are consolidated by Claude with code-execution math (e.g. "2 cup flour" + "1 cup flour" → "3 cup flour") and grouped by store aisle.
+- **Real-time sharing** — share a list two ways:
+  - Generate a link, send via WhatsApp/text/anything. Recipient signs up once, then auto-joins.
+  - Invite an existing Pantry user by email.
+  - Check-offs sync live across all devices via Supabase Realtime.
 - **Favorites** — tap the ★ on a recipe you loved to find it again later.
 - **Alexa Shopping List integration** — stub endpoint (`app/api/alexa/route.ts`) ready to be wired up.
 

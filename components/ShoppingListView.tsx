@@ -46,6 +46,8 @@ export function ShoppingListView({
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareInfo, setShareInfo] = useState<string | null>(null);
   const [showShare, setShowShare] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [alexaResult, setAlexaResult] = useState<string | null>(null);
 
   // Real-time sync
@@ -148,6 +150,45 @@ export function ShoppingListView({
     router.refresh();
   }
 
+  async function getOrCreateShareLink(rotate = false) {
+    setShareError(null);
+    const res = await fetch(`/api/lists/${list.id}/invite`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rotate }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setShareError(data.error || 'Failed to create link');
+      return;
+    }
+    setShareLink(`${window.location.origin}/lists/join/${data.token}`);
+    setLinkCopied(false);
+  }
+
+  async function revokeLink() {
+    if (!confirm('Anyone with the existing link will lose access. Continue?')) return;
+    await fetch(`/api/lists/${list.id}/invite`, { method: 'DELETE' });
+    setShareLink(null);
+  }
+
+  async function copyLink() {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // clipboard may be blocked; user can copy manually
+    }
+  }
+
+  function whatsappShare() {
+    if (!shareLink) return;
+    const text = `I shared my Pantry shopping list "${list.name}" with you: ${shareLink}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  }
+
   async function unshare(userId: string) {
     if (!confirm('Remove this person from the list?')) return;
     await fetch(`/api/lists/${list.id}/share`, {
@@ -204,37 +245,74 @@ export function ShoppingListView({
       </div>
 
       {showShare && isOwner && (
-        <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-5">
-          <h3 className="font-medium">Share this list</h3>
-          <p className="mt-1 text-xs text-stone-500">
-            They need a Pantry account first. Once added, check-offs sync in real time.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <input
-              type="email"
-              value={shareEmail}
-              onChange={(e) => setShareEmail(e.target.value)}
-              placeholder="partner@example.com"
-              className="input flex-1"
-            />
-            <button onClick={share} className="btn-primary">
-              Add
-            </button>
+        <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-5 space-y-5">
+          <div>
+            <h3 className="font-medium">Share with a link</h3>
+            <p className="mt-1 text-xs text-stone-500">
+              Anyone who opens this link will be added to the list. They sign up once with their email, then everything syncs in real time. Send via WhatsApp, text, anything.
+            </p>
+            {shareLink ? (
+              <>
+                <div className="mt-3 flex gap-2">
+                  <input readOnly value={shareLink} className="input font-mono text-xs flex-1" />
+                  <button onClick={copyLink} className="btn-secondary">
+                    {linkCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  <button onClick={whatsappShare} className="rounded-full bg-emerald-600 text-white px-3 py-1 hover:bg-emerald-700">
+                    Send via WhatsApp
+                  </button>
+                  <button onClick={() => getOrCreateShareLink(true)} className="rounded-full border border-stone-300 px-3 py-1 hover:bg-stone-100">
+                    Generate new link
+                  </button>
+                  <button onClick={revokeLink} className="rounded-full border border-stone-300 px-3 py-1 hover:bg-stone-100 text-red-600">
+                    Revoke link
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button onClick={() => getOrCreateShareLink(false)} className="btn-primary mt-3">
+                Create share link
+              </button>
+            )}
           </div>
-          {shareError && <p className="mt-2 text-sm text-red-600">{shareError}</p>}
-          {shareInfo && <p className="mt-2 text-sm text-emerald-700">{shareInfo}</p>}
+
+          <div className="border-t border-stone-200 pt-5">
+            <h3 className="font-medium">Or invite by email</h3>
+            <p className="mt-1 text-xs text-stone-500">
+              For someone who already has a Pantry account.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <input
+                type="email"
+                value={shareEmail}
+                onChange={(e) => setShareEmail(e.target.value)}
+                placeholder="partner@example.com"
+                className="input flex-1"
+              />
+              <button onClick={share} className="btn-secondary">
+                Add
+              </button>
+            </div>
+            {shareError && <p className="mt-2 text-sm text-red-600">{shareError}</p>}
+            {shareInfo && <p className="mt-2 text-sm text-emerald-700">{shareInfo}</p>}
+          </div>
 
           {shares.length > 0 && (
-            <ul className="mt-3 space-y-1 text-sm">
-              {shares.map((s) => (
-                <li key={s.user_id} className="flex items-center justify-between">
-                  <span>{s.display_name || s.email}</span>
-                  <button onClick={() => unshare(s.user_id)} className="text-stone-500 hover:text-red-600 text-xs">
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="border-t border-stone-200 pt-5">
+              <h3 className="font-medium text-sm">People with access</h3>
+              <ul className="mt-2 space-y-1 text-sm">
+                {shares.map((s) => (
+                  <li key={s.user_id} className="flex items-center justify-between">
+                    <span>{s.display_name || s.email}</span>
+                    <button onClick={() => unshare(s.user_id)} className="text-stone-500 hover:text-red-600 text-xs">
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}

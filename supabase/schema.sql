@@ -81,10 +81,15 @@ create table if not exists shopping_lists (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
   name text not null default 'Shopping List',
+  share_token uuid,
   created_at timestamptz not null default now()
 );
 
+-- Add share_token to existing installations
+alter table shopping_lists add column if not exists share_token uuid;
+
 create index if not exists shopping_lists_owner_idx on shopping_lists(owner_id);
+create unique index if not exists shopping_lists_share_token_idx on shopping_lists(share_token) where share_token is not null;
 
 alter table shopping_lists enable row level security;
 
@@ -206,3 +211,44 @@ create policy "Delete items from accessible lists" on shopping_list_items
 -- Enable realtime for collaborative check-off
 alter publication supabase_realtime add table shopping_list_items;
 alter publication supabase_realtime add table shopping_lists;
+
+-- =========================================
+-- Claim a list via share_token (used by /lists/join/[token])
+-- security definer so a user with a valid token can read the list
+-- and add themselves to list_shares, bypassing RLS for that one action.
+-- =========================================
+create or replace function public.claim_list_share(token uuid)
+returns table(list_id uuid, list_name text)
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_list_id uuid;
+  v_name text;
+  v_owner uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Must be signed in';
+  end if;
+
+  select id, name, owner_id into v_list_id, v_name, v_owner
+  from shopping_lists where share_token = token;
+
+  if v_list_id is null then
+    raise exception 'Invalid share link';
+  end if;
+
+  -- Owner doesn't need a share row
+  if v_owner <> auth.uid() then
+    insert into list_shares (list_id, user_id, permission)
+    values (v_list_id, auth.uid(), 'edit')
+    on conflict do nothing;
+  end if;
+
+  list_id := v_list_id;
+  list_name := v_name;
+  return next;
+end;
+$$;
+
+grant execute on function public.claim_list_share(uuid) to authenticated;

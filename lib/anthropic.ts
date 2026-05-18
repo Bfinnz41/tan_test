@@ -53,7 +53,9 @@ Rules:
 - Adjust ingredient quantities, swap items, or rewrite instructions as needed.
 - Update the title only if the modification changes the dish substantially (e.g. "dairy-free version").
 - Re-categorize swapped ingredients.
-- If the request is ambiguous or unsafe, return the recipe unchanged and put a note in the title.`;
+- If the request is ambiguous or unsafe, return the recipe unchanged and put a note in the title.
+
+ARITHMETIC: When the request involves math (scaling, halving, doubling, unit conversion, percentage changes), USE the code_execution tool to do the arithmetic in Python. Do not eyeball fractions or mental math — it's error-prone. Write a short script that computes the new quantities, then put the results in the final JSON.`;
 
 export async function parseRecipeFromText(text: string): Promise<ParsedRecipe> {
   const response = await client.messages.create({
@@ -73,9 +75,7 @@ export async function parseRecipeFromText(text: string): Promise<ParsedRecipe> {
     ],
   });
 
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') throw new Error('No recipe returned from model');
-  return normalizeParsed(JSON.parse(block.text));
+  return extractParsedRecipe(response);
 }
 
 export async function parseRecipeFromImage(image: ImageInput): Promise<ParsedRecipe> {
@@ -106,9 +106,86 @@ export async function parseRecipeFromImage(image: ImageInput): Promise<ParsedRec
     ],
   });
 
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') throw new Error('No recipe returned from model');
-  return normalizeParsed(JSON.parse(block.text));
+  return extractParsedRecipe(response);
+}
+
+export async function parseRecipeFromPdf(pdfBase64: string): Promise<ParsedRecipe> {
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 8000,
+    system: [
+      { type: 'text', text: PARSE_SYSTEM, cache_control: { type: 'ephemeral' } },
+    ],
+    output_config: {
+      format: { type: 'json_schema', schema: RECIPE_JSON_SCHEMA },
+    },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 },
+          },
+          { type: 'text', text: 'Parse the recipe in this PDF.' },
+        ],
+      },
+    ],
+  });
+
+  return extractParsedRecipe(response);
+}
+
+export async function fetchRecipePage(
+  url: string,
+  cookies?: string,
+): Promise<{ text: string; title?: string }> {
+  const headers: Record<string, string> = {
+    // Pretend to be a normal browser
+    'user-agent':
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+    accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'accept-language': 'en-US,en;q=0.9',
+  };
+  if (cookies?.trim()) headers.cookie = cookies.trim();
+
+  const res = await fetch(url, { headers, redirect: 'follow' });
+  if (!res.ok) {
+    throw new Error(`Could not fetch page (${res.status}). For paywalled sites, paste your browser cookies or save the page as PDF instead.`);
+  }
+  const html = await res.text();
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const title = titleMatch?.[1]?.trim();
+
+  // Strip non-content tags
+  const stripped = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<head[\s\S]*?<\/head>/gi, ' ');
+
+  // Decode the most common HTML entities
+  const text = stripped
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Cap to ~120K chars (~30K tokens) to keep cost reasonable
+  return { text: text.slice(0, 120_000), title };
+}
+
+export async function parseRecipeFromUrl(url: string, cookies?: string): Promise<ParsedRecipe> {
+  const { text, title } = await fetchRecipePage(url, cookies);
+  return parseRecipeFromText(
+    `Source URL: ${url}${title ? `\nPage title: ${title}` : ''}\n\nPage content:\n${text}`,
+  );
 }
 
 export async function modifyRecipe(
@@ -119,12 +196,11 @@ export async function modifyRecipe(
     model: MODEL,
     max_tokens: 8000,
     thinking: { type: 'adaptive' },
+    output_config: { effort: 'high' },
+    tools: [{ type: 'code_execution_20260120', name: 'code_execution' }],
     system: [
       { type: 'text', text: MODIFY_SYSTEM, cache_control: { type: 'ephemeral' } },
     ],
-    output_config: {
-      format: { type: 'json_schema', schema: RECIPE_JSON_SCHEMA },
-    },
     messages: [
       {
         role: 'user',
@@ -138,14 +214,12 @@ export async function modifyRecipe(
           },
           null,
           2,
-        )}\n\nModification request:\n${request}`,
+        )}\n\nModification request:\n${request}\n\nReturn the full modified recipe as JSON matching the response schema.`,
       },
     ],
   });
 
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') throw new Error('No modified recipe returned');
-  return normalizeParsed(JSON.parse(block.text));
+  return extractParsedRecipe(response);
 }
 
 const CONSOLIDATE_SYSTEM = `You consolidate shopping list ingredients from multiple recipes.
@@ -155,7 +229,9 @@ Rules:
 - If units differ and can't be safely combined, keep separate entries.
 - Use the bare ingredient name.
 - Tag each entry with a grocery category: produce, meat, dairy, pantry, frozen, bakery, deli, beverages, household, other.
-- Keep prep notes in the "notes" field only when relevant for shopping (e.g. "low-sodium").`;
+- Keep prep notes in the "notes" field only when relevant for shopping (e.g. "low-sodium").
+
+ARITHMETIC: USE the code_execution tool for ALL quantity math. Fractions, decimals, unit conversions — run them in Python. Don't do mental math, it's error-prone. Then put the computed totals in the final JSON output.`;
 
 const SHOPPING_LIST_SCHEMA = {
   type: 'object',
@@ -186,6 +262,7 @@ export async function consolidateIngredients(
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 4000,
+    tools: [{ type: 'code_execution_20260120', name: 'code_execution' }],
     system: [
       { type: 'text', text: CONSOLIDATE_SYSTEM, cache_control: { type: 'ephemeral' } },
     ],
@@ -204,10 +281,24 @@ export async function consolidateIngredients(
     ],
   });
 
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') throw new Error('No consolidated list returned');
-  const parsed = JSON.parse(block.text);
+  const textBlock = lastTextBlock(response);
+  if (!textBlock) throw new Error('No consolidated list returned');
+  const parsed = JSON.parse(textBlock);
   return (parsed.items as Ingredient[]).map(cleanIngredient);
+}
+
+function lastTextBlock(response: Anthropic.Message): string | null {
+  for (let i = response.content.length - 1; i >= 0; i--) {
+    const b = response.content[i];
+    if (b.type === 'text' && b.text.trim()) return b.text;
+  }
+  return null;
+}
+
+function extractParsedRecipe(response: Anthropic.Message): ParsedRecipe {
+  const text = lastTextBlock(response);
+  if (!text) throw new Error('No recipe returned from model');
+  return normalizeParsed(JSON.parse(text));
 }
 
 function cleanIngredient(i: Partial<Ingredient>): Ingredient {
