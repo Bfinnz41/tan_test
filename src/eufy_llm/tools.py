@@ -7,12 +7,16 @@ Returns:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
 from .dance import dance as dance_routine
 from .robot import Robot
 from .scheduler import RobotScheduler
+
+PULSE_MAX_S = 5.0
+WAIT_MAX_S = 30.0
 
 
 def _parse_when(when: str) -> datetime:
@@ -90,6 +94,24 @@ def build_tools(
     async def dance(_: dict) -> str:
         return await dance_routine(robot)
 
+    async def pulse(args: dict) -> str:
+        duration = float(args["duration_s"])
+        if duration <= 0 or duration > PULSE_MAX_S:
+            return f"Refused: pulse duration must be between 0 and {PULSE_MAX_S}s."
+        await robot.start_cleaning()
+        try:
+            await asyncio.sleep(duration)
+        finally:
+            await robot.pause()
+        return f"Pulsed forward for {duration}s."
+
+    async def wait(args: dict) -> str:
+        seconds = float(args["seconds"])
+        if seconds <= 0 or seconds > WAIT_MAX_S:
+            return f"Refused: wait must be between 0 and {WAIT_MAX_S}s."
+        await asyncio.sleep(seconds)
+        return f"Waited {seconds}s."
+
     async def schedule_at(args: dict) -> str:
         run_at = _parse_when(args["when"])
         action = args["action"].strip().lower()
@@ -142,6 +164,8 @@ def build_tools(
         "resume_cleaning": resume_cleaning,
         "return_to_dock": return_to_dock,
         "dance": dance,
+        "pulse": pulse,
+        "wait": wait,
         "schedule_at": schedule_at,
         "list_schedule": list_schedule,
         "cancel_schedule": cancel_schedule,
@@ -195,8 +219,53 @@ def build_tools(
         },
         {
             "name": "dance",
-            "description": "Make the robot perform a silly dance routine. Best effort — the X10 has no native dance mode.",
+            "description": (
+                "Run the default canned dance routine (a few short pulses then dock). "
+                "Use this ONLY when the user says 'dance' with no further specification "
+                "OR when scheduling a dance for later. For any custom or descriptive dance "
+                "('quick', 'long', 'shimmy 5 times', 'slow rhythm', etc.) compose your own "
+                "routine using pulse + wait instead."
+            ),
             "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "pulse",
+            "description": (
+                "Make the robot lurch forward briefly: start cleaning, wait duration_s seconds, "
+                "then pause. This is the only movement primitive — the X10 has no joystick, "
+                "so dance routines are sequences of pulses + waits. Typical pulse: 0.3-2.0s. "
+                "Compose multiple pulse + wait calls in a row to choreograph a routine, "
+                "interpreting the user's description (fast/slow, short/long, how many times, "
+                "rhythm). Always finish a routine by calling return_to_dock unless the user "
+                "asks otherwise."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "duration_s": {
+                        "type": "number",
+                        "description": f"How long to pulse forward, in seconds. 0-{PULSE_MAX_S}.",
+                    }
+                },
+                "required": ["duration_s"],
+            },
+        },
+        {
+            "name": "wait",
+            "description": (
+                "Sleep for `seconds` seconds without commanding the robot. Use between pulses "
+                "to set the rhythm of a dance routine, or to space out other actions."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "seconds": {
+                        "type": "number",
+                        "description": f"How long to wait, in seconds. 0-{WAIT_MAX_S}.",
+                    }
+                },
+                "required": ["seconds"],
+            },
         },
         {
             "name": "schedule_at",
