@@ -9,45 +9,54 @@ claude> Started cleaning: kitchen, living room.
 
 you> go home and resume cleaning at 3pm tomorrow
 claude> Heading home now. Scheduled 'Resume' for 2026-05-25T15:00:00 (job id: 4f2a1c).
-
-you> dance
-claude> Danced via the play/pause shuffle (manual control not available on this model).
 ```
 
 ## Architecture
 
-- `robot.py` — async wrapper over the unofficial `eufy-clean` library (Tuya cloud)
+```
+You (chat)
+   ↓
+Claude  (picks tools)
+   ↓
+Our Python  (calls HA over HTTP)
+   ↓
+Home Assistant  (eufy-clean integration)
+   ↓
+Eufy cloud → Your X10
+```
+
+- `robot.py` — HTTP client for Home Assistant's REST API
 - `tools.py` — JSON-schema tool definitions + dispatch table for Claude
 - `agent.py` — manual tool-use loop against the Anthropic API
 - `scheduler.py` — APScheduler (asyncio) for one-shot and cron jobs
 - `dance.py` — fake dance routine (X10 has no native dance mode)
 - `main.py` — CLI
 
+## Prerequisites
+
+You need:
+
+1. **A running Home Assistant instance** with the [Eufy Robovac MQTT](https://github.com/jeppesens/eufy-clean) integration installed and connected to your Eufy account. The vacuum should be visible and controllable from the HA UI before this project will work.
+2. **A Long-Lived Access Token** from HA (Profile → Security → Long-lived access tokens → Create token).
+3. **Your vacuum's entity ID** (HA → Developer Tools → States → filter `vacuum.` → copy the ID, e.g. `vacuum.eufy_tj_home`).
+4. **An Anthropic API key** (`console.anthropic.com` → API Keys).
+
 ## Run locally
 
-This must run on your own machine (or an always-on box like a Raspberry Pi).
-A cloud container won't keep scheduled jobs alive.
-
 ```sh
-git clone <this repo>
+git clone https://github.com/Bfinnz41/tan_test.git
 cd tan_test
-python -m venv .venv && source .venv/bin/activate
+git checkout claude/eufy-x10-robotics-HZzXN
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env       # fill in ANTHROPIC_API_KEY, EUFY_USERNAME, EUFY_PASSWORD
+cp .env.example .env       # fill in the values above
 python -m eufy_llm.main
 ```
 
 ## Caveats
 
-- **Unofficial Eufy API.** `eufy-clean` talks to the same Tuya cloud the mobile
-  app uses. Method names shift between versions — `robot.py` probes for the
-  most likely names and raises a clear error if none match. If you hit one,
-  inspect the library and add the right method name to the probe list.
-- **Room cleaning** requires that you've already set up the map and named
-  rooms in the Eufy mobile app. Run `list_rooms` (just ask Claude "what
-  rooms do you see?") to confirm.
-- **Dance mode is fake.** Real dance needs manual joystick control, which
-  isn't reliably exposed for the X10. The fallback is a play/pause shuffle.
-- **Costs.** Each conversation turn is one or more Anthropic API calls. Set
-  `ANTHROPIC_MODEL=claude-sonnet-4-6` in `.env` for ~10x cheaper turns if
-  Opus's quality isn't needed.
+- **HA must be reachable.** If `HA_URL` is `http://localhost:8123`, the Python script has to run on the same machine as HA. For remote access, replace with the LAN IP and port, or use Nabu Casa Cloud.
+- **Room cleaning** requires that you've set up the map and named rooms in the Eufy mobile app. The integration exposes them as a `select.<vacuum>_clean_room` entity.
+- **Dance mode is fake.** The X10 has no native dance mode, and HA doesn't expose joystick control; the fallback is a play/pause shuffle.
+- **Scheduled jobs die with the script.** If you close Terminal, the scheduler stops. For 24/7 scheduling, run on an always-on host (Raspberry Pi, NAS, etc.) and use `nohup` or systemd.
+- **Costs.** Each conversation turn is one or more Anthropic API calls. Sonnet 4.6 (`claude-sonnet-4-6`) is ~10× cheaper than Opus and plenty smart for vacuum commands.

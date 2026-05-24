@@ -27,18 +27,18 @@ async def amain() -> None:
     model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-7")
 
     robot = Robot(
-        username=_require("EUFY_USERNAME"),
-        password=_require("EUFY_PASSWORD"),
-        device_id=os.environ.get("EUFY_DEVICE_ID") or None,
+        ha_url=_require("HA_URL"),
+        ha_token=_require("HA_TOKEN"),
+        vacuum_entity=_require("HA_VACUUM_ENTITY"),
     )
     scheduler = RobotScheduler()
     scheduler.start()
 
-    print("Connecting to Eufy...")
+    print(f"Connecting to Home Assistant at {os.environ['HA_URL']}...")
     try:
         await robot.connect()
     except Exception as e:
-        sys.exit(f"Eufy login failed: {type(e).__name__}: {e}")
+        sys.exit(f"HA connection failed: {type(e).__name__}: {e}")
     print("Connected. Type a command (or 'quit').\n")
 
     agent = RobotAgent(model=model, robot=robot, scheduler=scheduler)
@@ -62,6 +62,7 @@ async def amain() -> None:
             print(f"claude> {reply}\n")
     finally:
         scheduler.shutdown()
+        await robot.close()
 
 
 def main() -> None:

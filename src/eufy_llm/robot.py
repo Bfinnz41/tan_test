@@ -1,19 +1,21 @@
-"""Thin async wrapper around the unofficial `eufy-clean` library.
+"""Robot wrapper backed by Home Assistant's REST API.
 
-The Eufy X10 Pro Omni has no official public API, so we're talking to it via
-the same Tuya cloud the mobile app uses. Method names in `eufy-clean` shift
-between versions; this wrapper probes for the most likely method on each call
-and raises a clear error if none is found, instead of crashing deep inside
-the library.
+Instead of talking to Eufy's cloud directly (no working Python library exists
+for the X10 Pro Omni), we go through a Home Assistant instance that already
+has the Eufy Robovac MQTT integration installed and connected.
+
+Required env vars:
+- HA_URL: e.g. http://localhost:8123
+- HA_TOKEN: a long-lived access token from HA
+- HA_VACUUM_ENTITY: e.g. vacuum.eufy_tj_home (from HA Developer Tools → States)
 """
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from EufyClean import EufyClean
+import httpx
 
 
 @dataclass
@@ -23,137 +25,117 @@ class RoomInfo:
 
 
 class Robot:
-    def __init__(self, username: str, password: str, device_id: str | None = None):
-        self._username = username
-        self._password = password
-        self._device_id = device_id
-        self._client: EufyClean | None = None
-        self._device: Any = None
-        self._lock = asyncio.Lock()
+    def __init__(self, ha_url: str, ha_token: str, vacuum_entity: str):
+        self._base = ha_url.rstrip("/")
+        self._entity = vacuum_entity
+        self._headers = {
+            "Authorization": f"Bearer {ha_token}",
+            "Content-Type": "application/json",
+        }
+        self._client: httpx.AsyncClient | None = None
+
+    async def _http(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(headers=self._headers, timeout=30.0)
+        return self._client
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def connect(self) -> None:
-        async with self._lock:
-            if self._device is not None:
-                return
-            self._client = EufyClean(self._username, self._password)
-            await self._client.login()
-
-            if not self._device_id:
-                devices = await self._call(self._client, ["list_devices", "get_devices"])
-                if not devices:
-                    raise RuntimeError("No Eufy devices found on this account.")
-                first = devices[0]
-                self._device_id = first.get("id") or first.get("device_id") or first.get("deviceId")
-                if not self._device_id:
-                    raise RuntimeError(f"Could not pick a device id from: {first!r}")
-
-            self._device = await self._call(
-                self._client, ["init_device", "get_device"], self._device_id
+        c = await self._http()
+        r = await c.get(f"{self._base}/api/states/{self._entity}")
+        if r.status_code == 401:
+            raise RuntimeError("HA rejected the token. Regenerate HA_TOKEN.")
+        if r.status_code == 404:
+            raise RuntimeError(
+                f"HA does not know entity {self._entity!r}. "
+                f"Check HA_VACUUM_ENTITY in your .env (Developer Tools → States in HA)."
             )
+        r.raise_for_status()
 
-    async def _ensure(self) -> Any:
-        if self._device is None:
-            await self.connect()
-        return self._device
+    async def _call_service(self, domain: str, service: str, data: dict | None = None) -> Any:
+        c = await self._http()
+        payload: dict[str, Any] = {"entity_id": self._entity}
+        if data:
+            payload.update(data)
+        url = f"{self._base}/api/services/{domain}/{service}"
+        r = await c.post(url, json=payload)
+        r.raise_for_status()
+        return r.json()
 
-    @staticmethod
-    async def _call(obj: Any, names: list[str], *args, **kwargs) -> Any:
-        """Call the first matching method name; await if it's a coroutine."""
-        for name in names:
-            method = getattr(obj, name, None)
-            if method is None:
-                continue
-            result = method(*args, **kwargs)
-            if asyncio.iscoroutine(result):
-                result = await result
-            return result
-        raise AttributeError(
-            f"None of these methods exist on {type(obj).__name__}: {names}. "
-            f"The eufy-clean library may have changed; update src/eufy_llm/robot.py."
-        )
+    async def _get_state(self, entity_id: str) -> dict | None:
+        c = await self._http()
+        r = await c.get(f"{self._base}/api/states/{entity_id}")
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
 
     async def status(self) -> dict[str, Any]:
-        device = await self._ensure()
-        await self._call(device, ["update", "refresh", "get_state"])
-        state = getattr(device, "state", None) or getattr(device, "status", None) or {}
-        if hasattr(state, "__dict__"):
-            state = dict(state.__dict__)
+        state = await self._get_state(self._entity)
+        if state is None:
+            return {"battery": None, "work_status": "unknown", "raw": {}}
+        attrs = state.get("attributes") or {}
         return {
-            "battery": state.get("battery") if isinstance(state, dict) else None,
-            "work_status": state.get("work_status") or state.get("status") if isinstance(state, dict) else None,
-            "raw": state,
+            "battery": attrs.get("battery_level"),
+            "work_status": state.get("state"),
+            "raw": attrs,
         }
 
     async def list_rooms(self) -> list[RoomInfo]:
-        device = await self._ensure()
-        try:
-            rooms_raw = await self._call(
-                device, ["get_rooms", "list_rooms", "get_map_rooms", "rooms"]
-            )
-        except AttributeError:
-            return []
-        rooms: list[RoomInfo] = []
-        if isinstance(rooms_raw, dict):
-            rooms_raw = rooms_raw.values()
-        for r in rooms_raw or []:
-            if isinstance(r, dict):
-                rid = str(r.get("id") or r.get("room_id") or r.get("name"))
-                name = str(r.get("name") or r.get("room_name") or rid)
-                rooms.append(RoomInfo(id=rid, name=name))
-        return rooms
+        # Eufy Robovac MQTT exposes rooms as a `select.<vacuum>_clean_room` entity
+        # with the available rooms in its `options` attribute.
+        base = self._entity.replace("vacuum.", "select.", 1)
+        for suffix in ("_clean_room", "_scene"):
+            state = await self._get_state(base + suffix)
+            if state is None:
+                continue
+            options = (state.get("attributes") or {}).get("options") or []
+            rooms = [
+                RoomInfo(id=o, name=o)
+                for o in options
+                if isinstance(o, str) and o.strip().lower() not in {"", "unknown"}
+            ]
+            if rooms:
+                return rooms
+        return []
 
     async def start_cleaning(self) -> None:
-        device = await self._ensure()
-        await self._call(
-            device, ["play", "auto_clean", "start_auto_cleaning", "start_cleaning", "start"]
-        )
+        await self._call_service("vacuum", "start")
 
     async def pause(self) -> None:
-        device = await self._ensure()
-        await self._call(device, ["pause"])
+        await self._call_service("vacuum", "pause")
 
     async def resume(self) -> None:
-        device = await self._ensure()
-        await self._call(device, ["resume", "play"])
+        # HA's vacuum.start resumes a paused job.
+        await self._call_service("vacuum", "start")
 
     async def stop(self) -> None:
-        device = await self._ensure()
-        await self._call(device, ["stop"])
+        await self._call_service("vacuum", "stop")
 
     async def return_to_dock(self) -> None:
-        device = await self._ensure()
-        await self._call(device, ["go_home", "return_home", "return_to_dock", "dock"])
+        await self._call_service("vacuum", "return_to_base")
 
     async def clean_rooms(self, room_ids: list[str]) -> None:
-        device = await self._ensure()
-        for method in ["clean_rooms", "room_clean", "scene_clean", "start_room_cleaning"]:
-            fn = getattr(device, method, None)
-            if fn is None:
-                continue
-            result = fn(room_ids)
-            if asyncio.iscoroutine(result):
-                await result
-            return
-        raise AttributeError(
-            "No room-clean method on this device. Confirm your X10's map is set up "
-            "in the Eufy app and that eufy-clean exposes room cleaning for it."
-        )
+        # Strategy: set the room via the select entity, then trigger a clean.
+        # Works with the Eufy Robovac MQTT integration's `select.<vacuum>_clean_room`.
+        select_entity = self._entity.replace("vacuum.", "select.", 1) + "_clean_room"
+        if await self._get_state(select_entity) is None:
+            raise RuntimeError(
+                f"Could not find room-select entity {select_entity!r}. "
+                f"Confirm your X10's map is set up in the Eufy app."
+            )
+        for room in room_ids:
+            await self._call_service(
+                "select",
+                "select_option",
+                {"entity_id": select_entity, "option": room},
+            )
+        await self.start_cleaning()
 
     async def manual_move(self, direction: str, duration_s: float = 0.6) -> None:
-        """Best-effort joystick nudge. Direction: forward|back|left|right."""
-        device = await self._ensure()
-        for method in ["manual_control", "move", "joystick", "set_direction"]:
-            fn = getattr(device, method, None)
-            if fn is None:
-                continue
-            result = fn(direction)
-            if asyncio.iscoroutine(result):
-                await result
-            await asyncio.sleep(duration_s)
-            stop = getattr(device, "manual_stop", None) or getattr(device, "stop_move", None)
-            if stop:
-                r = stop()
-                if asyncio.iscoroutine(r):
-                    await r
-            return
-        raise AttributeError("No manual-control method on this device.")
+        # The Eufy Robovac MQTT integration doesn't expose joystick control.
+        raise AttributeError("Manual joystick control isn't exposed through Home Assistant.")
