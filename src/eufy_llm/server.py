@@ -32,7 +32,7 @@ from fastapi import Header
 from . import spotify, stuck_watcher
 from .agent import RobotAgent
 from .bedroom_watch import run_bedroom_check
-from .dance import SEPTEMBER_ROUTINE, WELCOME_ROUTINE, run_routine
+from .dance import SEPTEMBER_ROUTINE, run_routine, run_welcome_dance
 from .robot import Robot
 from .scheduler import RobotScheduler
 
@@ -154,8 +154,8 @@ async def greet(authorization: str | None = Header(default=None)):
     async def _go() -> None:
         try:
             print("[greet] welcome dance starting")
-            await run_routine(robot, WELCOME_ROUTINE)
-            print("[greet] welcome dance complete")
+            summary = await run_welcome_dance(robot)
+            print(f"[greet] {summary}")
         except Exception as e:
             print(f"[greet error] {type(e).__name__}: {e}")
 

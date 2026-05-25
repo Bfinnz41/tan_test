@@ -158,17 +158,82 @@ SEPTEMBER_ROUTINE: list[RoutineStep] = [
 
 # ---------------------------------------------------------------------------
 # Welcome routine — triggered when the iPhone's "When I Arrive Home"
-# automation hits /greet. Short (~8s), joyful, doesn't relocate the robot.
+# automation hits /greet. Drives to the entryway first, then dances there
+# before docking. Falls back to dance-in-place if the entryway room isn't
+# found in the Eufy map.
 # ---------------------------------------------------------------------------
 
-WELCOME_ROUTINE: list[RoutineStep] = [
+# Just the dance bit (no nav, no dock) — used when we drive there first.
+WELCOME_DANCE_BODY: list[RoutineStep] = [
     RoutineStep(0.0, "beep"),
     RoutineStep(0.6, "beep"),
     RoutineStep(1.5, "spin", 2.5),
     RoutineStep(4.5, "beep"),
     RoutineStep(5.0, "spin", 1.5),
+]
+
+# Full routine including dock — used as fallback when entryway isn't mapped.
+WELCOME_ROUTINE: list[RoutineStep] = WELCOME_DANCE_BODY + [
     RoutineStep(7.5, "dock"),
 ]
+
+
+async def run_welcome_dance(robot: Robot) -> str:
+    """Drive to the entryway room, dance there, then dock.
+
+    Configured via env vars:
+      ENTRYWAY_ROOM_NAME           — room name in your Eufy map (default 'Entryway')
+      WELCOME_TRAVEL_DELAY_SECONDS — how long to wait for the robot to arrive (default 60)
+
+    Returns a short status string describing what happened.
+    """
+    import os
+
+    room_name = os.environ.get("ENTRYWAY_ROOM_NAME", "Entryway").strip()
+    travel_s = float(os.environ.get("WELCOME_TRAVEL_DELAY_SECONDS", "60"))
+
+    try:
+        rooms = await robot.list_rooms()
+    except Exception as e:
+        print(f"[welcome] couldn't list rooms ({e}); dancing in place.")
+        await run_routine(robot, WELCOME_ROUTINE)
+        return "Danced in place (couldn't query rooms)."
+
+    target = next(
+        (r for r in rooms if r.name.strip().lower() == room_name.lower()), None
+    )
+    if target is None:
+        available = ", ".join(r.name for r in rooms) or "(none mapped)"
+        print(
+            f"[welcome] room {room_name!r} not in map. Available: {available}. "
+            f"Dancing in place instead."
+        )
+        await run_routine(robot, WELCOME_ROUTINE)
+        return f"Danced in place ({room_name!r} not mapped)."
+
+    print(f"[welcome] driving to {room_name!r}; waiting {travel_s:.0f}s for arrival.")
+    try:
+        await robot.clean_rooms([target.id])
+    except Exception as e:
+        print(f"[welcome] clean_rooms failed ({e}); falling back to in-place.")
+        await run_routine(robot, WELCOME_ROUTINE)
+        return "Danced in place (navigation command failed)."
+
+    await asyncio.sleep(travel_s)
+    print("[welcome] arrived (probably); dancing.")
+    try:
+        await robot.pause()
+        await asyncio.sleep(0.5)
+    except Exception as e:
+        print(f"[welcome] pause failed ({e}); proceeding to dance anyway.")
+
+    await run_routine(robot, WELCOME_DANCE_BODY)
+    await asyncio.sleep(0.5)
+    try:
+        await robot.return_to_dock()
+    except Exception as e:
+        print(f"[welcome] dock command failed: {e}")
+    return f"Drove to {room_name}, danced, and headed home."
 
 
 async def dance(robot: Robot) -> str:

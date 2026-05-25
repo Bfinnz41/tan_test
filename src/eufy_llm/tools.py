@@ -15,9 +15,9 @@ from . import spotify
 from .bedroom_watch import run_bedroom_check
 from .dance import (
     SEPTEMBER_ROUTINE,
-    WELCOME_ROUTINE,
     dance as dance_routine,
     run_routine,
+    run_welcome_dance,
 )
 from .notifications import notify_husband
 from .robot import Robot
@@ -202,12 +202,13 @@ def build_tools(
     async def welcome_dance(_: dict) -> str:
         async def _go() -> None:
             try:
-                await run_routine(robot, WELCOME_ROUTINE)
+                summary = await run_welcome_dance(robot)
+                print(f"[welcome] {summary}")
             except Exception as e:
                 print(f"[welcome error] {type(e).__name__}: {e}")
 
         asyncio.create_task(_go())
-        return "Doing the welcome dance."
+        return "Driving to the entryway and dancing."
 
     async def dance_to_song(args: dict) -> str:
         song = args["song"].lower().strip()
