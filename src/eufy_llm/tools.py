@@ -14,6 +14,7 @@ from typing import Any, Awaitable, Callable
 from . import spotify
 from .bedroom_watch import run_bedroom_check
 from .dance import SEPTEMBER_ROUTINE, dance as dance_routine, run_routine
+from .notifications import notify_husband
 from .robot import Robot
 from .scheduler import RobotScheduler
 
@@ -167,6 +168,19 @@ def build_tools(
         await robot.locate()
         return "Beeped."
 
+    async def text_husband(args: dict) -> str:
+        message = args["message"].strip()
+        if not message:
+            return "Refused: message is empty."
+        sent = await notify_husband(message)
+        if sent:
+            return f"Sent iMessage: {message!r}"
+        return (
+            "Couldn't send. Either HUSBAND_IMESSAGE_HANDLE isn't set in .env, "
+            "or macOS hasn't granted Messages permission yet. Check the server "
+            "terminal for the exact reason."
+        )
+
     async def check_bedroom_now(_: dict) -> str:
         # Fires off the bedroom-anomaly check in the background so the
         # voice/chat response can return immediately (the clean takes minutes).
@@ -266,6 +280,7 @@ def build_tools(
         "beep": beep,
         "dance_to_song": dance_to_song,
         "check_bedroom_now": check_bedroom_now,
+        "text_husband": text_husband,
         "wait": wait,
         "schedule_at": schedule_at,
         "schedule_daily": schedule_daily,
@@ -373,6 +388,27 @@ def build_tools(
                 "Use as punctuation in dance routines or to find the robot."
             ),
             "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "text_husband",
+            "description": (
+                "Send an iMessage to the configured husband handle. Use when the user "
+                "asks to 'text my husband', 'send my husband a message', 'let my husband "
+                "know X', etc. You write the message body yourself based on what the "
+                "user wants to convey — keep it natural and concise. Robot-related "
+                "context (battery, what it's doing, etc.) is fair game — call get_status "
+                "first if the user wants a status update sent."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The message body to send.",
+                    }
+                },
+                "required": ["message"],
+            },
         },
         {
             "name": "check_bedroom_now",
