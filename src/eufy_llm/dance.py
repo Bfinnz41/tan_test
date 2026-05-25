@@ -201,14 +201,31 @@ async def run_welcome_dance(robot: Robot) -> str:
     room_name = os.environ.get("ENTRYWAY_ROOM_NAME", "Entryway").strip()
     travel_s = float(os.environ.get("WELCOME_TRAVEL_DELAY_SECONDS", "60"))
     music_lead_s = float(os.environ.get("MUSIC_LEAD_SECONDS", "5"))
+    echo_entity = os.environ.get("ECHO_HA_ENTITY", "").strip()
+    welcome_song = os.environ.get(
+        "WELCOME_SONG_QUERY", "September by Earth Wind and Fire"
+    ).strip()
 
     async def _start_music() -> None:
+        # Preferred path: HA Alexa Media Player. Tells the Echo to play
+        # directly -- works even when the Echo is dormant in Spotify Connect.
+        if echo_entity:
+            try:
+                from . import alexa
+                await alexa.play_song(echo_entity, welcome_song)
+                print(f"[welcome] music: '{welcome_song}' on {echo_entity}")
+                return
+            except Exception as e:
+                print(
+                    f"[welcome] Alexa Media Player failed ({type(e).__name__}: {e}); "
+                    f"falling back to Spotify Web API."
+                )
+        # Fallback: Spotify Web API direct (less reliable when Echo dormant).
         try:
             from . import spotify, spotify_web
             msg = await spotify_web.play_on_echo(spotify.SEPTEMBER_URI)
-            print(f"[welcome] music: {msg}")
+            print(f"[welcome] music (spotify web): {msg}")
         except Exception as e:
-            # Don't let music failures kill the dance.
             print(f"[welcome] music skipped: {type(e).__name__}: {e}")
 
     try:
