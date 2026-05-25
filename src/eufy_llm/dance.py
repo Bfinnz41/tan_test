@@ -207,26 +207,43 @@ async def run_welcome_dance(robot: Robot) -> str:
     ).strip()
 
     async def _start_music() -> None:
-        # Preferred path: HA Alexa Media Player. Tells the Echo to play
-        # directly -- works even when the Echo is dormant in Spotify Connect.
+        # Two-step approach so iPhone Spotify doesn't steal the session back:
+        #
+        # 1. Alexa Media Player wakes the Echo and starts playback. Solves the
+        #    "dormant Echo" problem (Spotify Web API can't transfer to a sleeping
+        #    Connect endpoint).
+        # 2. Spotify Web API then explicitly transfers playback to the Echo,
+        #    "anchoring" the session. Without this, the user's iPhone Spotify
+        #    app reasserts itself within a couple seconds and pulls the music
+        #    back to the phone.
+        alexa_started = False
         if echo_entity:
             try:
                 from . import alexa
                 await alexa.play_song(echo_entity, welcome_song)
-                print(f"[welcome] music: '{welcome_song}' on {echo_entity}")
-                return
+                print(f"[welcome] alexa: started '{welcome_song}' on {echo_entity}")
+                alexa_started = True
             except Exception as e:
-                print(
-                    f"[welcome] Alexa Media Player failed ({type(e).__name__}: {e}); "
-                    f"falling back to Spotify Web API."
+                print(f"[welcome] alexa failed ({type(e).__name__}: {e})")
+
+        echo_spotify = os.environ.get("ECHO_DEVICE_NAME", "").strip()
+        if echo_spotify:
+            if alexa_started:
+                # Let the Echo register as "active" in Spotify Connect first.
+                await asyncio.sleep(2.5)
+            try:
+                from . import spotify, spotify_web
+                msg = await spotify_web.play_on_echo(
+                    spotify.SEPTEMBER_URI, device_name=echo_spotify
                 )
-        # Fallback: Spotify Web API direct (less reliable when Echo dormant).
-        try:
-            from . import spotify, spotify_web
-            msg = await spotify_web.play_on_echo(spotify.SEPTEMBER_URI)
-            print(f"[welcome] music (spotify web): {msg}")
-        except Exception as e:
-            print(f"[welcome] music skipped: {type(e).__name__}: {e}")
+                print(f"[welcome] spotify locked to Echo: {msg}")
+            except Exception as e:
+                tag = "(alexa still playing)" if alexa_started else "(no music)"
+                print(f"[welcome] spotify lock failed {tag}: {type(e).__name__}: {e}")
+        elif not alexa_started:
+            print(
+                "[welcome] no music: neither ECHO_HA_ENTITY nor ECHO_DEVICE_NAME set"
+            )
 
     try:
         rooms = await robot.list_rooms()
