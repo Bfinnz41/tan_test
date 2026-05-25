@@ -81,7 +81,7 @@ def main() -> None:
     webbrowser.open(auth_url)
 
     print(f"Waiting for Spotify to redirect to {REDIRECT_URI} ...")
-    server = http.server.HTTPServer(("localhost", 8888), _Handler)
+    server = http.server.HTTPServer(("127.0.0.1", 8888), _Handler)
     while _received["code"] is None and _received["error"] is None:
         server.handle_request()
 

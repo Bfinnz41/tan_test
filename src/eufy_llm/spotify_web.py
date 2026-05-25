@@ -6,7 +6,7 @@ clients are currently outputting audio.
 
 Setup (one-time):
 1. Create a Spotify Developer app at https://developer.spotify.com/dashboard
-2. Add redirect URI:  http://localhost:8888/callback
+2. Add redirect URI:  http://127.0.0.1:8888/callback
 3. Put SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET in .env
 4. Run:  python -m eufy_llm.spotify_auth
 5. Set ECHO_DEVICE_NAME in .env to whatever your Echo is named
@@ -30,7 +30,7 @@ import httpx
 API_BASE = "https://api.spotify.com/v1"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 AUTH_URL = "https://accounts.spotify.com/authorize"
-REDIRECT_URI = "http://localhost:8888/callback"
+REDIRECT_URI = "http://127.0.0.1:8888/callback"
 SCOPES = "user-read-playback-state user-modify-playback-state"
 
 TOKEN_PATH = Path.home() / "tan_test" / "data" / "spotify_tokens.json"
