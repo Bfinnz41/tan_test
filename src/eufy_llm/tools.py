@@ -120,7 +120,7 @@ def build_tools(
         rooms = await robot.list_rooms()
         if not rooms:
             return "No rooms mapped. Set up rooms in the Eufy mobile app first."
-        return "\n".join(f"- {r.name} (id={r.id})" for r in rooms)
+        return "\n".join(f"- {r.name}" for r in rooms)
 
     async def clean_rooms(args: dict) -> str:
         rooms = await robot.list_rooms()

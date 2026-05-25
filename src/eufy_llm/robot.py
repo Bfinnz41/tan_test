@@ -12,10 +12,16 @@ Required env vars:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+# Some Eufy MQTT integrations append " (ID: N)" to each room option in the
+# select entity. We strip that for the human-visible name, but keep the full
+# original string as the id (that's what we have to send back when selecting).
+_ID_SUFFIX = re.compile(r"\s*\(ID:\s*\d+\)\s*$", re.IGNORECASE)
 
 
 @dataclass
@@ -94,11 +100,17 @@ class Robot:
             if state is None:
                 continue
             options = (state.get("attributes") or {}).get("options") or []
-            rooms = [
-                RoomInfo(id=o, name=o)
-                for o in options
-                if isinstance(o, str) and o.strip().lower() not in {"", "unknown"}
-            ]
+            rooms: list[RoomInfo] = []
+            for o in options:
+                if not isinstance(o, str):
+                    continue
+                stripped = o.strip()
+                if stripped.lower() in {"", "unknown"}:
+                    continue
+                # Display name without the " (ID: N)" suffix; full original
+                # string is the id we send back when selecting.
+                name = _ID_SUFFIX.sub("", stripped).strip() or stripped
+                rooms.append(RoomInfo(id=o, name=name))
             if rooms:
                 return rooms
         return []
