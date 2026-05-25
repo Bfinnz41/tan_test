@@ -13,7 +13,12 @@ from typing import Any, Awaitable, Callable
 
 from . import spotify
 from .bedroom_watch import run_bedroom_check
-from .dance import SEPTEMBER_ROUTINE, dance as dance_routine, run_routine
+from .dance import (
+    SEPTEMBER_ROUTINE,
+    WELCOME_ROUTINE,
+    dance as dance_routine,
+    run_routine,
+)
 from .notifications import notify_husband
 from .robot import Robot
 from .scheduler import RobotScheduler
@@ -194,6 +199,16 @@ def build_tools(
         asyncio.create_task(_go())
         return "Started bedroom check. I'll text if it looks like clothes are on the floor."
 
+    async def welcome_dance(_: dict) -> str:
+        async def _go() -> None:
+            try:
+                await run_routine(robot, WELCOME_ROUTINE)
+            except Exception as e:
+                print(f"[welcome error] {type(e).__name__}: {e}")
+
+        asyncio.create_task(_go())
+        return "Doing the welcome dance."
+
     async def dance_to_song(args: dict) -> str:
         song = args["song"].lower().strip()
         entry = _SONG_LIBRARY.get(song)
@@ -279,6 +294,7 @@ def build_tools(
         "spin": spin,
         "beep": beep,
         "dance_to_song": dance_to_song,
+        "welcome_dance": welcome_dance,
         "check_bedroom_now": check_bedroom_now,
         "text_husband": text_husband,
         "wait": wait,
@@ -420,6 +436,16 @@ def build_tools(
                 "user says things like 'check the bedroom', 'is the bedroom messy', "
                 "'see if there are clothes on the floor', etc. Returns immediately "
                 "while the clean runs in the background."
+            ),
+            "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "welcome_dance",
+            "description": (
+                "Run the short ~8-second welcome-home routine (beeps + spins + dock). "
+                "Use when the user says 'greet me', 'welcome me home', 'say hi', or "
+                "wants to test the GPS welcome routine. Runs in the background and "
+                "returns immediately. Robot doesn't relocate — it dances where it is."
             ),
             "input_schema": {"type": "object", "properties": {}, "required": []},
         },

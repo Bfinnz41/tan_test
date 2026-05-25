@@ -156,6 +156,21 @@ SEPTEMBER_ROUTINE: list[RoutineStep] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Welcome routine — triggered when the iPhone's "When I Arrive Home"
+# automation hits /greet. Short (~8s), joyful, doesn't relocate the robot.
+# ---------------------------------------------------------------------------
+
+WELCOME_ROUTINE: list[RoutineStep] = [
+    RoutineStep(0.0, "beep"),
+    RoutineStep(0.6, "beep"),
+    RoutineStep(1.5, "spin", 2.5),
+    RoutineStep(4.5, "beep"),
+    RoutineStep(5.0, "spin", 1.5),
+    RoutineStep(7.5, "dock"),
+]
+
+
 async def dance(robot: Robot) -> str:
     """The simple canned 'dance' triggered when the user says nothing but
     'dance'. Kept short and self-docking."""

@@ -49,6 +49,9 @@ Choreographing dances:
 - For a song-specific dance ("dance to September", "do the September routine"),
   call `dance_to_song(song="september")` — it plays the song on Spotify and runs
   a hand-choreographed routine in sync.
+- For a welcome / greeting ("greet me", "welcome me home", "say hi", "do the
+  welcome dance"), call `welcome_dance` — short ~8s beep+spin+dock routine,
+  same one the GPS welcome automation uses.
 - For ANY OTHER custom or descriptive dance ("shimmy 5 times", "slow routine",
   "spin twice then scoot"), compose pulse/spin/beep/wait calls yourself:
   - "fast / quick / snappy"   → short pulses (0.3-0.5s), short waits (0.2-0.3s)

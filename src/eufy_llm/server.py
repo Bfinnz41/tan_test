@@ -25,12 +25,18 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+import time
+
+from fastapi import Header
+
 from . import spotify, stuck_watcher
 from .agent import RobotAgent
 from .bedroom_watch import run_bedroom_check
-from .dance import SEPTEMBER_ROUTINE, run_routine
+from .dance import SEPTEMBER_ROUTINE, WELCOME_ROUTINE, run_routine
 from .robot import Robot
 from .scheduler import RobotScheduler
+
+GREET_COOLDOWN_S = 600  # 10 min between welcome-dance triggers
 
 _state: dict = {}
 
@@ -119,6 +125,42 @@ async def chat(req: ChatRequest):
     except Exception as e:
         raise HTTPException(500, f"{type(e).__name__}: {e}")
     return ChatResponse(reply=reply)
+
+
+@app.post("/greet")
+async def greet(authorization: str | None = Header(default=None)):
+    """Triggered by the iPhone 'When I Arrive Home' Personal Automation.
+
+    Requires header `Authorization: Bearer <GREET_TOKEN>` matching the
+    GREET_TOKEN env var. Cooldown prevents multiple firings within 10 min.
+    """
+    expected = os.environ.get("GREET_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(503, "GREET_TOKEN not configured on the server")
+    if authorization != f"Bearer {expected}":
+        raise HTTPException(401, "Invalid or missing token")
+
+    now = time.monotonic()
+    last = _state.get("last_greet_at", 0.0)
+    if now - last < GREET_COOLDOWN_S:
+        wait = int(GREET_COOLDOWN_S - (now - last))
+        return {"skipped": True, "reason": f"cooldown ({wait}s remaining)"}
+    _state["last_greet_at"] = now
+
+    robot: Robot | None = _state.get("robot")
+    if robot is None:
+        raise HTTPException(503, "Robot not initialized")
+
+    async def _go() -> None:
+        try:
+            print("[greet] welcome dance starting")
+            await run_routine(robot, WELCOME_ROUTINE)
+            print("[greet] welcome dance complete")
+        except Exception as e:
+            print(f"[greet error] {type(e).__name__}: {e}")
+
+    asyncio.create_task(_go())
+    return {"started": True, "routine": "welcome"}
 
 
 @app.post("/check/bedroom")
