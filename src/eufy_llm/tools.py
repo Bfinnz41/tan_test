@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
 from . import spotify
+from .bedroom_watch import run_bedroom_check
 from .dance import SEPTEMBER_ROUTINE, dance as dance_routine, run_routine
 from .robot import Robot
 from .scheduler import RobotScheduler
@@ -126,6 +127,19 @@ def build_tools(
         await robot.locate()
         return "Beeped."
 
+    async def check_bedroom_now(_: dict) -> str:
+        # Fires off the bedroom-anomaly check in the background so the
+        # voice/chat response can return immediately (the clean takes minutes).
+        async def _go() -> None:
+            try:
+                summary = await run_bedroom_check(robot)
+                print(f"[bedroom-check] {summary}")
+            except Exception as e:
+                print(f"[bedroom-check error] {type(e).__name__}: {e}")
+
+        asyncio.create_task(_go())
+        return "Started bedroom check. I'll text if it looks like clothes are on the floor."
+
     async def dance_to_song(args: dict) -> str:
         song = args["song"].lower().strip()
         entry = _SONG_LIBRARY.get(song)
@@ -210,6 +224,7 @@ def build_tools(
         "spin": spin,
         "beep": beep,
         "dance_to_song": dance_to_song,
+        "check_bedroom_now": check_bedroom_now,
         "wait": wait,
         "schedule_at": schedule_at,
         "list_schedule": list_schedule,
@@ -314,6 +329,19 @@ def build_tools(
             "description": (
                 "Make the robot play its 'locate' sound effect. A short audible chirp. "
                 "Use as punctuation in dance routines or to find the robot."
+            ),
+            "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "check_bedroom_now",
+            "description": (
+                "Run the bedroom-clutter anomaly check immediately. Starts a "
+                "bedroom-only clean, times it, compares to the rolling baseline, "
+                "and iMessages the configured handle if it's significantly longer "
+                "than usual (suggesting clothes/clutter on the floor). Use when the "
+                "user says things like 'check the bedroom', 'is the bedroom messy', "
+                "'see if there are clothes on the floor', etc. Returns immediately "
+                "while the clean runs in the background."
             ),
             "input_schema": {"type": "object", "properties": {}, "required": []},
         },

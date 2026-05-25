@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from . import spotify
 from .agent import RobotAgent
+from .bedroom_watch import run_bedroom_check
 from .dance import SEPTEMBER_ROUTINE, run_routine
 from .robot import Robot
 from .scheduler import RobotScheduler
@@ -80,11 +81,24 @@ async def lifespan(app: FastAPI):
     _state["robot"] = robot
     _state["scheduler"] = scheduler
 
+    # Daily 12:00 bedroom anomaly check.
+    async def _daily_bedroom_check() -> None:
+        try:
+            summary = await run_bedroom_check(robot)
+            print(f"[bedroom-check] {summary}")
+        except Exception as e:
+            print(f"[bedroom-check error] {type(e).__name__}: {e}")
+
+    scheduler.schedule_cron(
+        "0 12 * * *", _daily_bedroom_check, "Daily 12:00 bedroom anomaly check"
+    )
+
     ip = _lan_ip()
     print("\n  ──────────────────────────────────────────────")
     print("  Eufy voice-agent server is running.")
     print(f"  Point your iPhone Shortcut at:  http://{ip}:8000/chat")
     print("  Health check (browser):         http://localhost:8000/health")
+    print("  Daily bedroom check scheduled:  12:00 every day")
     print("  ──────────────────────────────────────────────\n")
 
     yield
@@ -111,6 +125,17 @@ async def chat(req: ChatRequest):
     except Exception as e:
         raise HTTPException(500, f"{type(e).__name__}: {e}")
     return ChatResponse(reply=reply)
+
+
+@app.post("/check/bedroom")
+async def check_bedroom():
+    """Run the bedroom anomaly check immediately. Blocks until the clean
+    finishes — can take several minutes. Useful for ad-hoc testing."""
+    robot: Robot | None = _state.get("robot")
+    if robot is None:
+        raise HTTPException(503, "Robot not initialized")
+    summary = await run_bedroom_check(robot)
+    return {"summary": summary}
 
 
 @app.post("/dance/september")

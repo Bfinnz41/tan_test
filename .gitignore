@@ -7,3 +7,4 @@ venv/
 .eufy_cache.json
 *.log
 .DS_Store
+data/
