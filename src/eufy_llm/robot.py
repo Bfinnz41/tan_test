@@ -119,6 +119,15 @@ class Robot:
     async def return_to_dock(self) -> None:
         await self._call_service("vacuum", "return_to_base")
 
+    async def spot_clean(self) -> None:
+        # Robot spirals in place. Confirmed supported on the X10 via HA
+        # (supported_features bitmask includes CLEAN_SPOT = 1024).
+        await self._call_service("vacuum", "clean_spot")
+
+    async def locate(self) -> None:
+        # Plays the "where am I" sound effect.
+        await self._call_service("vacuum", "locate")
+
     async def clean_rooms(self, room_ids: list[str]) -> None:
         # Strategy: set the room via the select entity, then trigger a clean.
         # Works with the Eufy Robovac MQTT integration's `select.<vacuum>_clean_room`.

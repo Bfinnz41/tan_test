@@ -15,6 +15,7 @@ without adding auth.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
 import sys
@@ -24,7 +25,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from . import spotify
 from .agent import RobotAgent
+from .dance import SEPTEMBER_ROUTINE, run_routine
 from .robot import Robot
 from .scheduler import RobotScheduler
 
@@ -108,6 +111,31 @@ async def chat(req: ChatRequest):
     except Exception as e:
         raise HTTPException(500, f"{type(e).__name__}: {e}")
     return ChatResponse(reply=reply)
+
+
+@app.post("/dance/september")
+async def dance_september():
+    """Trigger the September routine.
+
+    Plays the song on Spotify (Mac desktop app) and runs the choreography
+    in sync. Returns immediately while the routine runs in the background.
+    """
+    robot: Robot | None = _state.get("robot")
+    if robot is None:
+        raise HTTPException(503, "Robot not initialized")
+
+    async def _go() -> None:
+        try:
+            await spotify.play_track(spotify.SEPTEMBER_URI)
+            offset = await spotify.wait_for_playback(timeout=8.0)
+            print(f"[dance] Spotify reports playing at t={offset:.3f}s")
+            await run_routine(robot, SEPTEMBER_ROUTINE, offset=offset)
+            print("[dance] Routine complete.")
+        except Exception as e:
+            print(f"[dance error] {type(e).__name__}: {e}")
+
+    asyncio.create_task(_go())
+    return {"started": True, "routine": "september"}
 
 
 def main() -> None:

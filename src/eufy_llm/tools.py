@@ -11,12 +11,18 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
-from .dance import dance as dance_routine
+from . import spotify
+from .dance import SEPTEMBER_ROUTINE, dance as dance_routine, run_routine
 from .robot import Robot
 from .scheduler import RobotScheduler
 
 PULSE_MAX_S = 5.0
+SPIN_MAX_S = 5.0
 WAIT_MAX_S = 30.0
+
+_SONG_LIBRARY: dict[str, tuple[str, list]] = {
+    "september": (spotify.SEPTEMBER_URI, SEPTEMBER_ROUTINE),
+}
 
 
 def _parse_when(when: str) -> datetime:
@@ -105,6 +111,42 @@ def build_tools(
             await robot.pause()
         return f"Pulsed forward for {duration}s."
 
+    async def spin(args: dict) -> str:
+        duration = float(args["duration_s"])
+        if duration <= 0 or duration > SPIN_MAX_S:
+            return f"Refused: spin duration must be between 0 and {SPIN_MAX_S}s."
+        await robot.spot_clean()
+        try:
+            await asyncio.sleep(duration)
+        finally:
+            await robot.pause()
+        return f"Spun in place for {duration}s."
+
+    async def beep(_: dict) -> str:
+        await robot.locate()
+        return "Beeped."
+
+    async def dance_to_song(args: dict) -> str:
+        song = args["song"].lower().strip()
+        entry = _SONG_LIBRARY.get(song)
+        if entry is None:
+            available = ", ".join(_SONG_LIBRARY) or "(none)"
+            return f"No routine for {song!r}. Available: {available}."
+        uri, routine = entry
+
+        async def _go() -> None:
+            try:
+                await spotify.play_track(uri)
+                offset = await spotify.wait_for_playback(timeout=8.0)
+                print(f"[dance] Spotify reports playing at t={offset:.3f}s")
+                await run_routine(robot, routine, offset=offset)
+                print("[dance] Routine complete.")
+            except Exception as e:
+                print(f"[dance error] {type(e).__name__}: {e}")
+
+        asyncio.create_task(_go())
+        return f"Starting {song} routine. Playing on Spotify now."
+
     async def wait(args: dict) -> str:
         seconds = float(args["seconds"])
         if seconds <= 0 or seconds > WAIT_MAX_S:
@@ -165,6 +207,9 @@ def build_tools(
         "return_to_dock": return_to_dock,
         "dance": dance,
         "pulse": pulse,
+        "spin": spin,
+        "beep": beep,
+        "dance_to_song": dance_to_song,
         "wait": wait,
         "schedule_at": schedule_at,
         "list_schedule": list_schedule,
@@ -231,23 +276,64 @@ def build_tools(
         {
             "name": "pulse",
             "description": (
-                "Make the robot lurch forward briefly: start cleaning, wait duration_s seconds, "
-                "then pause. This is the only movement primitive — the X10 has no joystick, "
-                "so dance routines are sequences of pulses + waits. Typical pulse: 0.3-2.0s. "
-                "Compose multiple pulse + wait calls in a row to choreograph a routine, "
-                "interpreting the user's description (fast/slow, short/long, how many times, "
-                "rhythm). Always finish a routine by calling return_to_dock unless the user "
-                "asks otherwise."
+                "Make the robot scoot forward briefly: start cleaning, wait duration_s seconds, "
+                "then pause. The robot picks its own direction. Typical scoot: 0.3-2.0s. "
+                "Use as the 'forward' move in custom dance routines."
             ),
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "duration_s": {
                         "type": "number",
-                        "description": f"How long to pulse forward, in seconds. 0-{PULSE_MAX_S}.",
+                        "description": f"How long to scoot forward, in seconds. 0-{PULSE_MAX_S}.",
                     }
                 },
                 "required": ["duration_s"],
+            },
+        },
+        {
+            "name": "spin",
+            "description": (
+                "Make the robot spin/spiral in place for duration_s seconds, then pause. "
+                "Uses the X10's spot-clean mode under the hood. Typical spin: 1.5-3.0s. "
+                "Use as the 'rotation' move in custom dance routines."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "duration_s": {
+                        "type": "number",
+                        "description": f"How long to spin in place, in seconds. 0-{SPIN_MAX_S}.",
+                    }
+                },
+                "required": ["duration_s"],
+            },
+        },
+        {
+            "name": "beep",
+            "description": (
+                "Make the robot play its 'locate' sound effect. A short audible chirp. "
+                "Use as punctuation in dance routines or to find the robot."
+            ),
+            "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "dance_to_song",
+            "description": (
+                "Trigger a pre-choreographed dance routine timed to a specific song. "
+                "Plays the song on Spotify (Mac desktop app) and runs the routine in sync. "
+                "Returns immediately while the routine runs in the background. "
+                "Currently choreographed: 'september'."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "song": {
+                        "type": "string",
+                        "description": "Song name. Currently supported: 'september'.",
+                    }
+                },
+                "required": ["song"],
             },
         },
         {
