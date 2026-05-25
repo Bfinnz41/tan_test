@@ -181,9 +181,18 @@ WELCOME_ROUTINE: list[RoutineStep] = WELCOME_DANCE_BODY + [
 async def run_welcome_dance(robot: Robot) -> str:
     """Drive to the entryway room, dance there, then dock.
 
+    Also starts Spotify playback on the configured Echo device (via Spotify
+    Web API), timed to begin a few seconds before the dance so music is
+    audible when the robot arrives.
+
     Configured via env vars:
-      ENTRYWAY_ROOM_NAME           — room name in your Eufy map (default 'Entryway')
-      WELCOME_TRAVEL_DELAY_SECONDS — how long to wait for the robot to arrive (default 60)
+      ENTRYWAY_ROOM_NAME            — room name in your Eufy map (default 'Entryway')
+      WELCOME_TRAVEL_DELAY_SECONDS  — wait time for the robot to arrive (default 60)
+      MUSIC_LEAD_SECONDS            — seconds before the dance to start music (default 5)
+      ECHO_DEVICE_NAME              — your Echo's Spotify Connect name (optional)
+      SPOTIFY_CLIENT_ID/SECRET      — for the Web API (optional)
+
+    Music silently skipped if Spotify isn't configured.
 
     Returns a short status string describing what happened.
     """
@@ -191,11 +200,22 @@ async def run_welcome_dance(robot: Robot) -> str:
 
     room_name = os.environ.get("ENTRYWAY_ROOM_NAME", "Entryway").strip()
     travel_s = float(os.environ.get("WELCOME_TRAVEL_DELAY_SECONDS", "60"))
+    music_lead_s = float(os.environ.get("MUSIC_LEAD_SECONDS", "5"))
+
+    async def _start_music() -> None:
+        try:
+            from . import spotify, spotify_web
+            msg = await spotify_web.play_on_echo(spotify.SEPTEMBER_URI)
+            print(f"[welcome] music: {msg}")
+        except Exception as e:
+            # Don't let music failures kill the dance.
+            print(f"[welcome] music skipped: {type(e).__name__}: {e}")
 
     try:
         rooms = await robot.list_rooms()
     except Exception as e:
         print(f"[welcome] couldn't list rooms ({e}); dancing in place.")
+        asyncio.create_task(_start_music())
         await run_routine(robot, WELCOME_ROUTINE)
         return "Danced in place (couldn't query rooms)."
 
@@ -208,6 +228,7 @@ async def run_welcome_dance(robot: Robot) -> str:
             f"[welcome] room {room_name!r} not in map. Available: {available}. "
             f"Dancing in place instead."
         )
+        asyncio.create_task(_start_music())
         await run_routine(robot, WELCOME_ROUTINE)
         return f"Danced in place ({room_name!r} not mapped)."
 
@@ -216,10 +237,16 @@ async def run_welcome_dance(robot: Robot) -> str:
         await robot.clean_rooms([target.id])
     except Exception as e:
         print(f"[welcome] clean_rooms failed ({e}); falling back to in-place.")
+        asyncio.create_task(_start_music())
         await run_routine(robot, WELCOME_ROUTINE)
         return "Danced in place (navigation command failed)."
 
-    await asyncio.sleep(travel_s)
+    # Wait until almost there, then start music in the background.
+    music_delay = max(0.0, travel_s - music_lead_s)
+    await asyncio.sleep(music_delay)
+    asyncio.create_task(_start_music())
+    await asyncio.sleep(music_lead_s)
+
     print("[welcome] arrived (probably); dancing.")
     try:
         await robot.pause()
@@ -233,7 +260,7 @@ async def run_welcome_dance(robot: Robot) -> str:
         await robot.return_to_dock()
     except Exception as e:
         print(f"[welcome] dock command failed: {e}")
-    return f"Drove to {room_name}, danced, and headed home."
+    return f"Drove to {room_name}, danced (with music), and headed home."
 
 
 async def dance(robot: Robot) -> str:
