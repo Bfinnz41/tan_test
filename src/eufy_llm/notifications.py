@@ -48,20 +48,38 @@ async def send_imessage(handle: str, message: str) -> None:
     await _osascript(script)
 
 
-async def notify_husband(message: str) -> bool:
-    """Send a message to the configured husband handle.
+_TARGETS = {
+    "user": "USER_IMESSAGE_HANDLE",
+    "husband": "HUSBAND_IMESSAGE_HANDLE",
+}
 
-    Returns True if sent, False if no handle is configured (logs to stdout
-    in that case so you still see what would have been sent).
+
+async def notify(target: str, message: str) -> bool:
+    """Send an iMessage to a named target ('user' or 'husband').
+
+    Returns True if sent, False if the target handle isn't configured
+    (logs to stdout so you still see what would have been sent).
     """
-    handle = os.environ.get("HUSBAND_IMESSAGE_HANDLE", "").strip()
+    env_var = _TARGETS.get(target.lower())
+    if env_var is None:
+        print(f"[notify-error] Unknown target {target!r}; valid: {list(_TARGETS)}")
+        return False
+    handle = os.environ.get(env_var, "").strip()
     if not handle:
-        print(f"[notify-skipped] HUSBAND_IMESSAGE_HANDLE not set. Would send: {message}")
+        print(f"[notify-skipped] {env_var} not set. Would send to {target}: {message}")
         return False
     try:
         await send_imessage(handle, message)
-        print(f"[notify-sent] -> {handle}: {message}")
+        print(f"[notify-sent] -> {handle} ({target}): {message}")
         return True
     except Exception as e:
         print(f"[notify-error] {type(e).__name__}: {e}")
         return False
+
+
+async def notify_husband(message: str) -> bool:
+    return await notify("husband", message)
+
+
+async def notify_user(message: str) -> bool:
+    return await notify("user", message)

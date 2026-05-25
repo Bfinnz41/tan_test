@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import spotify
+from . import spotify, stuck_watcher
 from .agent import RobotAgent
 from .bedroom_watch import run_bedroom_check
 from .dance import SEPTEMBER_ROUTINE, run_routine
@@ -80,16 +80,23 @@ async def lifespan(app: FastAPI):
     _state["agent"] = RobotAgent(model=model, robot=robot, scheduler=scheduler)
     _state["robot"] = robot
     _state["scheduler"] = scheduler
+    _state["stuck_task"] = asyncio.create_task(stuck_watcher.watch(robot))
 
     ip = _lan_ip()
     print("\n  ──────────────────────────────────────────────")
     print("  Eufy voice-agent server is running.")
     print(f"  Point your iPhone Shortcut at:  http://{ip}:8000/chat")
     print("  Health check (browser):         http://localhost:8000/health")
+    print("  Stuck-watcher:                  running in background")
     print("  ──────────────────────────────────────────────\n")
 
     yield
 
+    _state["stuck_task"].cancel()
+    try:
+        await _state["stuck_task"]
+    except asyncio.CancelledError:
+        pass
     _state["scheduler"].shutdown()
     await _state["robot"].close()
 
