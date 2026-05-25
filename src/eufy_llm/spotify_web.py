@@ -126,7 +126,30 @@ class SpotifyWeb:
                 return d
         return None
 
+    async def transfer_playback(self, device_id: str, play: bool = False) -> None:
+        """Transfer the active Spotify Connect session to a target device.
+        Single-source-of-truth way to switch where audio comes out."""
+        await self._request(
+            "PUT",
+            "/me/player",
+            json={"device_ids": [device_id], "play": play},
+        )
+
     async def play_track_on_device(self, track_uri: str, device_id: str) -> None:
+        """Robustly play a track on a specific device.
+
+        Two-step: explicit transfer first (steals the session from whatever
+        device was active, like the user's phone with AirPods), brief pause
+        for the transfer to settle, then start the specific track.
+        """
+        try:
+            await self.transfer_playback(device_id, play=False)
+            await asyncio.sleep(0.4)
+        except Exception as e:
+            # If transfer fails (e.g. device temporarily unavailable), still
+            # try to play with device_id in the play call — that ALSO transfers
+            # in many cases. We just don't get the two-step robustness.
+            print(f"[spotify] transfer warning: {e}")
         await self._request(
             "PUT",
             f"/me/player/play?device_id={device_id}",
