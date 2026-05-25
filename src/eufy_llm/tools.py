@@ -46,6 +46,46 @@ def _parse_when(when: str) -> datetime:
     return candidate
 
 
+def _build_action(
+    action: str,
+    room_names: list[str],
+    robot: Robot,
+    scheduler: RobotScheduler,
+) -> tuple[Callable[[], Awaitable[Any]] | None, str]:
+    """Resolve a scheduled action name to a callable + label.
+
+    Returns (None, error_message) if the action is invalid. Shared by both
+    one-shot (schedule_at) and recurring (schedule_daily) scheduling tools.
+    """
+    async def do_clean_house() -> None:
+        await robot.start_cleaning()
+
+    async def do_clean_rooms() -> None:
+        rooms = await robot.list_rooms()
+        ids = _resolve_rooms(rooms, room_names)
+        await robot.clean_rooms(ids)
+
+    async def do_check_bedroom() -> None:
+        summary = await run_bedroom_check(robot)
+        print(f"[bedroom-check] {summary}")
+
+    actions: dict[str, tuple[Callable[[], Awaitable[Any]], str]] = {
+        "clean_whole_house": (do_clean_house, "Clean whole house"),
+        "clean_rooms": (do_clean_rooms, f"Clean rooms: {room_names}"),
+        "return_to_dock": (robot.return_to_dock, "Return to dock"),
+        "pause": (robot.pause, "Pause"),
+        "resume": (robot.resume, "Resume"),
+        "dance": (lambda: dance_routine(robot), "Dance"),
+        "check_bedroom": (do_check_bedroom, "Bedroom anomaly check"),
+    }
+    if action not in actions:
+        return None, f"Unknown action {action!r}. Valid: {list(actions)}"
+    if action == "clean_rooms" and not room_names:
+        return None, "clean_rooms requires room_names."
+    fn, label = actions[action]
+    return fn, label
+
+
 def _resolve_rooms(rooms: list[Any], wanted: list[str]) -> list[str]:
     by_name = {r.name.lower(): r.id for r in rooms}
     by_id = {r.id: r.id for r in rooms}
@@ -173,30 +213,31 @@ def build_tools(
         action = args["action"].strip().lower()
         room_names = args.get("room_names") or []
 
-        async def do_clean_house() -> None:
-            await robot.start_cleaning()
-
-        async def do_clean_rooms() -> None:
-            rooms = await robot.list_rooms()
-            ids = _resolve_rooms(rooms, room_names)
-            await robot.clean_rooms(ids)
-
-        actions = {
-            "clean_whole_house": (do_clean_house, "Clean whole house"),
-            "clean_rooms": (do_clean_rooms, f"Clean rooms: {room_names}"),
-            "return_to_dock": (robot.return_to_dock, "Return to dock"),
-            "pause": (robot.pause, "Pause"),
-            "resume": (robot.resume, "Resume"),
-            "dance": (lambda: dance_routine(robot), "Dance"),
-        }
-        if action not in actions:
-            return f"Unknown action {action!r}. Valid: {list(actions)}"
-        if action == "clean_rooms" and not room_names:
-            return "clean_rooms requires room_names."
-
-        fn, label = actions[action]
+        fn, label = _build_action(action, room_names, robot, scheduler)
+        if fn is None:
+            return label
         job = scheduler.schedule_once(run_at, fn, label)
         return f"Scheduled '{label}' for {job.next_run} (job id: {job.id})."
+
+    async def schedule_daily(args: dict) -> str:
+        # Parse "HH:MM" 24h format.
+        time_str = args["time"].strip()
+        try:
+            t = datetime.strptime(time_str, "%H:%M").time()
+        except ValueError:
+            return f"Could not parse time {time_str!r}. Use 24h HH:MM (e.g. '20:00')."
+        action = args["action"].strip().lower()
+        room_names = args.get("room_names") or []
+
+        fn, label = _build_action(action, room_names, robot, scheduler)
+        if fn is None:
+            return label
+        cron_expr = f"{t.minute} {t.hour} * * *"
+        job = scheduler.schedule_cron(cron_expr, fn, f"Daily @ {time_str}: {label}")
+        return (
+            f"Scheduled '{label}' every day at {time_str} (next run: {job.next_run}, "
+            f"job id: {job.id})."
+        )
 
     async def list_schedule(_: dict) -> str:
         jobs = scheduler.list_jobs()
@@ -227,6 +268,7 @@ def build_tools(
         "check_bedroom_now": check_bedroom_now,
         "wait": wait,
         "schedule_at": schedule_at,
+        "schedule_daily": schedule_daily,
         "list_schedule": list_schedule,
         "cancel_schedule": cancel_schedule,
     }
@@ -384,9 +426,10 @@ def build_tools(
         {
             "name": "schedule_at",
             "description": (
-                "Schedule a one-shot action at a future time. Convert relative times like "
-                "'in 10 minutes' or 'tomorrow at 3pm' to an ISO 8601 datetime using the "
-                "current time provided in the user message."
+                "Schedule a ONE-SHOT action at a future time (fires exactly once). "
+                "Convert relative times like 'in 10 minutes' or 'tomorrow at 3pm' to "
+                "an ISO 8601 datetime using the current time provided in the user message. "
+                "For recurring schedules, use schedule_daily instead."
             ),
             "input_schema": {
                 "type": "object",
@@ -404,6 +447,7 @@ def build_tools(
                             "pause",
                             "resume",
                             "dance",
+                            "check_bedroom",
                         ],
                     },
                     "room_names": {
@@ -413,6 +457,42 @@ def build_tools(
                     },
                 },
                 "required": ["when", "action"],
+            },
+        },
+        {
+            "name": "schedule_daily",
+            "description": (
+                "Schedule a RECURRING action that fires every day at the given time. "
+                "Use for requests like 'check the bedroom every day at 8pm', 'dance every "
+                "morning at 9am', etc. Time must be 24-hour HH:MM format — convert any "
+                "12-hour or natural-language time to that before calling."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "time": {
+                        "type": "string",
+                        "description": "24-hour HH:MM, e.g. '20:00' for 8pm, '07:30' for 7:30am.",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": [
+                            "clean_whole_house",
+                            "clean_rooms",
+                            "return_to_dock",
+                            "pause",
+                            "resume",
+                            "dance",
+                            "check_bedroom",
+                        ],
+                    },
+                    "room_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Required when action is clean_rooms.",
+                    },
+                },
+                "required": ["time", "action"],
             },
         },
         {

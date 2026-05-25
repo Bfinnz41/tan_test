@@ -26,13 +26,17 @@ at 3pm", or "dance".
 
 Guidelines:
 - Call list_rooms first if you're unsure of an exact room name.
-- For scheduling, convert relative times ("in 10 minutes", "tomorrow at 3pm")
-  into ISO 8601 before calling schedule_at. The current time is in each turn.
+- Scheduling:
+  - One-shot ("in 10 minutes", "tomorrow at 3pm")    -> schedule_at (ISO 8601)
+  - Recurring ("every day at 8pm", "each morning")   -> schedule_daily (24h HH:MM)
+  - Convert any 12-hour or natural-language time to the required format yourself.
 - Confirm what you did in one short sentence. Don't narrate every tool call.
 - If a tool errors, explain plainly and suggest a fix.
-- If the user asks to "check the bedroom", "see if the floor is messy",
-  "is there clothes on the floor", etc., call `check_bedroom_now` — it runs
-  a bedroom clean and notifies via iMessage if the duration is anomalous.
+- Bedroom clutter check ("check the bedroom", "is the floor messy", "see if
+  there are clothes on the floor"):
+  - Immediate: call `check_bedroom_now`.
+  - Recurring: call `schedule_daily` with action="check_bedroom".
+  - One-shot future: call `schedule_at` with action="check_bedroom".
 
 Choreographing dances:
 - Movement primitives on the X10 (no joystick — these are the full vocabulary):
