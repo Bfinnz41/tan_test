@@ -178,17 +178,68 @@ WELCOME_ROUTINE: list[RoutineStep] = WELCOME_DANCE_BODY + [
 ]
 
 
+async def _wait_for_arrival(
+    robot: Robot,
+    target_room_name: str,
+    max_wait_s: float,
+    arrival_area_m2: float,
+    poll_interval_s: float = 4.0,
+) -> bool:
+    """Poll Eufy sensors and return True once the robot has likely arrived.
+
+    The X10 doesn't expose a real-time position, so we use the cleaning_area
+    diagnostic sensor as a proxy: it only grows once the robot is actively
+    cleaning inside the target room (navigation from the dock doesn't count).
+    Once it crosses `arrival_area_m2`, the robot is doing real work in the
+    target — close enough to call "arrived" and start dancing.
+
+    Returns False if `max_wait_s` elapses without crossing the threshold.
+    """
+    base = robot._entity.split(".", 1)[1] if "." in robot._entity else robot._entity
+    target_sensor = f"sensor.{base}_active_cleaning_target"
+    area_sensor = f"sensor.{base}_cleaning_area"
+
+    deadline = time.monotonic() + max_wait_s
+    target_lower = target_room_name.strip().lower()
+    while time.monotonic() < deadline:
+        try:
+            target_state = await robot._get_state(target_sensor)
+            area_state = await robot._get_state(area_sensor)
+        except Exception as e:
+            print(f"[welcome] arrival poll error ({type(e).__name__}: {e}); retrying.")
+            await asyncio.sleep(poll_interval_s)
+            continue
+
+        target_value = ((target_state or {}).get("state") or "").strip().lower()
+        try:
+            area_value = float((area_state or {}).get("state") or 0)
+        except (TypeError, ValueError):
+            area_value = 0.0
+
+        if target_value == target_lower and area_value >= arrival_area_m2:
+            print(
+                f"[welcome] arrival detected: cleaning_area={area_value} m² "
+                f"in {target_room_name}"
+            )
+            return True
+
+        await asyncio.sleep(poll_interval_s)
+
+    print(f"[welcome] arrival timeout after {max_wait_s:.0f}s; dancing anyway.")
+    return False
+
+
 async def run_welcome_dance(robot: Robot) -> str:
     """Drive to the entryway room, dance there, then dock.
 
     Also starts Spotify playback on the configured Echo device (via Spotify
-    Web API), timed to begin a few seconds before the dance so music is
-    audible when the robot arrives.
+    Web API), timed so the music is playing by the time the robot arrives.
 
     Configured via env vars:
       ENTRYWAY_ROOM_NAME            — room name in your Eufy map (default 'Entryway')
-      WELCOME_TRAVEL_DELAY_SECONDS  — wait time for the robot to arrive (default 60)
-      MUSIC_LEAD_SECONDS            — seconds before the dance to start music (default 5)
+      WELCOME_MAX_TRAVEL_SECONDS    — max time to wait for arrival (default 240)
+      WELCOME_ARRIVAL_AREA_M2       — m² cleaned in target to count as "arrived" (default 1.0)
+      WELCOME_MUSIC_DELAY_SECONDS   — seconds into the journey to start music (default 25)
       ECHO_DEVICE_NAME              — your Echo's Spotify Connect name (optional)
       SPOTIFY_CLIENT_ID/SECRET      — for the Web API (optional)
 
@@ -199,8 +250,9 @@ async def run_welcome_dance(robot: Robot) -> str:
     import os
 
     room_name = os.environ.get("ENTRYWAY_ROOM_NAME", "Entryway").strip()
-    travel_s = float(os.environ.get("WELCOME_TRAVEL_DELAY_SECONDS", "60"))
-    music_lead_s = float(os.environ.get("MUSIC_LEAD_SECONDS", "5"))
+    max_travel_s = float(os.environ.get("WELCOME_MAX_TRAVEL_SECONDS", "240"))
+    arrival_area_m2 = float(os.environ.get("WELCOME_ARRIVAL_AREA_M2", "1.0"))
+    music_delay_s = float(os.environ.get("WELCOME_MUSIC_DELAY_SECONDS", "25"))
     echo_entity = os.environ.get("ECHO_HA_ENTITY", "").strip()
     welcome_song = os.environ.get(
         "WELCOME_SONG_QUERY", "September by Earth Wind and Fire"
@@ -266,7 +318,10 @@ async def run_welcome_dance(robot: Robot) -> str:
         await run_routine(robot, WELCOME_ROUTINE)
         return f"Danced in place ({room_name!r} not mapped)."
 
-    print(f"[welcome] driving to {room_name!r}; waiting {travel_s:.0f}s for arrival.")
+    print(
+        f"[welcome] driving to {room_name!r}; polling for arrival "
+        f"(max {max_travel_s:.0f}s)."
+    )
     try:
         await robot.clean_rooms([target.id])
     except Exception as e:
@@ -275,13 +330,26 @@ async def run_welcome_dance(robot: Robot) -> str:
         await run_routine(robot, WELCOME_ROUTINE)
         return "Danced in place (navigation command failed)."
 
-    # Wait until almost there, then start music in the background.
-    music_delay = max(0.0, travel_s - music_lead_s)
-    await asyncio.sleep(music_delay)
-    asyncio.create_task(_start_music())
-    await asyncio.sleep(music_lead_s)
+    # Music starts partway through the journey so it's audible by the time
+    # the robot arrives. Runs as a background task; arrival polling continues
+    # in parallel.
+    async def _delayed_music() -> None:
+        await asyncio.sleep(music_delay_s)
+        await _start_music()
 
-    print("[welcome] arrived (probably); dancing.")
+    music_task = asyncio.create_task(_delayed_music())
+
+    arrived = await _wait_for_arrival(
+        robot, room_name, max_travel_s, arrival_area_m2
+    )
+
+    # If we arrived before the music timer fired, kick it off immediately so
+    # the dance has audio.
+    if not music_task.done():
+        music_task.cancel()
+        asyncio.create_task(_start_music())
+
+    print(f"[welcome] {'arrived' if arrived else 'arrival timed out'}; dancing.")
     try:
         await robot.pause()
         await asyncio.sleep(0.5)

@@ -31,11 +31,17 @@ async def play_song(entity_id: str, query: str) -> None:
       'September by Earth Wind and Fire'
       'classical music'
       'top hits'
+
+    Uses an explicit provider via media_content_type to avoid Amazon's recent
+    "Direct music play is not allowed" restriction on the generic 'music' type.
+    Override via ALEXA_MEDIA_TYPE env var (e.g. 'AMAZON_MUSIC', 'SPOTIFY').
     """
     ha_url = os.environ.get("HA_URL", "").rstrip("/")
     ha_token = os.environ.get("HA_TOKEN", "")
     if not ha_url or not ha_token:
         raise RuntimeError("HA_URL and HA_TOKEN must be set in .env")
+
+    media_type = os.environ.get("ALEXA_MEDIA_TYPE", "SPOTIFY").strip() or "SPOTIFY"
 
     headers = {
         "Authorization": f"Bearer {ha_token}",
@@ -44,7 +50,7 @@ async def play_song(entity_id: str, query: str) -> None:
     payload = {
         "entity_id": entity_id,
         "media_content_id": query,
-        "media_content_type": "music",
+        "media_content_type": media_type,
     }
     async with httpx.AsyncClient(timeout=20.0) as client:
         r = await client.post(
