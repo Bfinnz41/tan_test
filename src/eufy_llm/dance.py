@@ -254,9 +254,24 @@ async def run_welcome_dance(robot: Robot) -> str:
     arrival_area_m2 = float(os.environ.get("WELCOME_ARRIVAL_AREA_M2", "1.0"))
     music_delay_s = float(os.environ.get("WELCOME_MUSIC_DELAY_SECONDS", "25"))
     echo_entity = os.environ.get("ECHO_HA_ENTITY", "").strip()
-    welcome_song = os.environ.get(
-        "WELCOME_SONG_QUERY", "September by Earth Wind and Fire"
-    ).strip()
+    alexa_media_type = os.environ.get("ALEXA_MEDIA_TYPE", "SPOTIFY").strip().upper()
+
+    # When using SPOTIFY content type, Alexa Media Player needs a Spotify URI
+    # (e.g. spotify:track:...) — free-text searches like "September by ..." are
+    # ignored and the Echo just plays random Spotify content. So default the
+    # song to the Spotify URI; if the user set WELCOME_SONG_QUERY to text and
+    # we're in SPOTIFY mode, fall back to the URI with a warning.
+    from . import spotify as _spotify
+    welcome_song = os.environ.get("WELCOME_SONG_QUERY", "").strip()
+    if not welcome_song:
+        welcome_song = _spotify.SEPTEMBER_URI
+    elif alexa_media_type == "SPOTIFY" and not welcome_song.startswith("spotify:"):
+        print(
+            f"[welcome] WELCOME_SONG_QUERY={welcome_song!r} is text but "
+            f"ALEXA_MEDIA_TYPE=SPOTIFY needs a Spotify URI. Using "
+            f"{_spotify.SEPTEMBER_URI} instead."
+        )
+        welcome_song = _spotify.SEPTEMBER_URI
 
     async def _start_music() -> None:
         # Two-step approach so iPhone Spotify doesn't steal the session back:
