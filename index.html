@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Giờ Xuất Hành — Lục Nhâm Tướng Pháp</title>
+<style>
+  :root{
+    --bg:#f4ede2; --card:#fffdf8; --ink:#2e2a23; --muted:#7a7163;
+    --line:#d8cdb8; --accent:#9a2f2f; --gold:#b8862b;
+    --good:#1f7a44; --good-bg:#e6f4ec; --good-line:#9fd3b5;
+    --mid:#9a6a00;  --mid-bg:#fbf3df;  --mid-line:#e7cf95;
+    --bad:#a32020;  --bad-bg:#fbe9e9;  --bad-line:#e6aaaa;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.5;
+    padding:16px;
+  }
+  .wrap{max-width:560px; margin:0 auto}
+  header{text-align:center; margin:8px 0 18px}
+  header h1{
+    font-size:1.45rem; margin:0; color:var(--accent); letter-spacing:.5px;
+    font-weight:800; text-transform:uppercase;
+  }
+  header p{margin:4px 0 0; color:var(--muted); font-size:.9rem; font-style:italic}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:18px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,.04);
+  }
+  label{display:block; font-weight:600; font-size:.9rem; margin-bottom:6px}
+  .field{margin-bottom:14px}
+  input[type=date], input[type=time], select{
+    width:100%; padding:11px 12px; font-size:1rem; border:1px solid var(--line);
+    border-radius:10px; background:#fff; color:var(--ink); font-family:inherit;
+  }
+  .row{display:flex; gap:12px}
+  .row .field{flex:1}
+  button{
+    width:100%; padding:13px; font-size:1.05rem; font-weight:700; cursor:pointer;
+    background:var(--accent); color:#fff; border:none; border-radius:10px;
+    letter-spacing:.3px; transition:filter .15s;
+  }
+  button:hover{filter:brightness(1.08)}
+  .lunar-note{font-size:.85rem; color:var(--muted); margin-top:4px; text-align:center}
+
+  /* Result */
+  .result{display:none}
+  .result.show{display:block; animation:fade .25s ease}
+  @keyframes fade{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
+  .verdict{
+    text-align:center; border-radius:14px; padding:18px; border:2px solid;
+  }
+  .verdict .tag{font-size:.8rem; text-transform:uppercase; letter-spacing:1px; opacity:.8}
+  .verdict .name{font-size:2rem; font-weight:800; margin:4px 0}
+  .verdict .quality{font-size:.95rem; font-weight:700; margin-bottom:8px}
+  .verdict .desc{font-size:.95rem; text-align:left}
+  .v-good{background:var(--good-bg); border-color:var(--good-line); color:var(--good)}
+  .v-mid {background:var(--mid-bg);  border-color:var(--mid-line);  color:var(--mid)}
+  .v-bad {background:var(--bad-bg);  border-color:var(--bad-line);  color:var(--bad)}
+  .verdict .desc{color:var(--ink)}
+  .calc{
+    font-size:.85rem; color:var(--muted); margin-top:12px; text-align:center;
+    background:#faf6ee; border:1px dashed var(--line); border-radius:10px; padding:10px;
+  }
+  .calc b{color:var(--ink)}
+
+  /* Slot table */
+  h2{font-size:1.05rem; margin:0 0 12px; color:var(--accent)}
+  .slots{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .slot{
+    border:1px solid; border-radius:10px; padding:9px 10px; font-size:.9rem;
+    display:flex; justify-content:space-between; align-items:center; gap:6px;
+  }
+  .slot .hrs{font-weight:700}
+  .slot .cat{font-size:.82rem; text-align:right; line-height:1.25}
+  .slot.s-good{background:var(--good-bg); border-color:var(--good-line)}
+  .slot.s-mid {background:var(--mid-bg);  border-color:var(--mid-line)}
+  .slot.s-bad {background:var(--bad-bg);  border-color:var(--bad-line)}
+  .slot.now{outline:3px solid var(--gold); outline-offset:1px}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:.82rem; margin-top:12px; color:var(--muted)}
+  .legend span{display:inline-flex; align-items:center; gap:5px}
+  .dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .dot.good{background:var(--good)} .dot.mid{background:var(--mid)} .dot.bad{background:var(--bad)}
+  footer{text-align:center; font-size:.8rem; color:var(--muted); margin:18px 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Giờ Xuất Hành</h1>
+    <p>Lục Nhâm Tướng Pháp — cách tính của Lý Thuần Phong</p>
+  </header>
+
+  <div class="card">
+    <div class="field">
+      <label for="date">Ngày dự định đi (dương lịch)</label>
+      <input type="date" id="date">
+      <div class="lunar-note" id="lunarNote"></div>
+    </div>
+    <div class="field">
+      <label for="time">Giờ dự định đi</label>
+      <input type="time" id="time">
+    </div>
+    <button id="calcBtn">Xem giờ xuất hành</button>
+  </div>
+
+  <div class="card result" id="result">
+    <div class="verdict" id="verdict">
+      <div class="tag">Số dư <span id="remainder"></span></div>
+      <div class="name" id="catName"></div>
+      <div class="quality" id="catQuality"></div>
+      <div class="desc" id="catDesc"></div>
+    </div>
+    <div class="calc" id="calcLine"></div>
+  </div>
+
+  <div class="card">
+    <h2>Các khung giờ trong ngày</h2>
+    <div class="slots" id="slots"></div>
+    <div class="legend">
+      <span><i class="dot good"></i> Tốt — nên đi</span>
+      <span><i class="dot mid"></i> Bình thường</span>
+      <span><i class="dot bad"></i> Xấu — nên tránh</span>
+    </div>
+  </div>
+
+  <footer>Phương pháp dân gian, mang tính tham khảo.</footer>
+</div>
+
+<script>
+/* ---------- Solar -> Lunar via VERIFIED LOOKUP TABLE (Vietnam, TZ +7) ----------
+   Each lunar year stores: t = solar date of Tết (lunar 1/1),
+   lp = leap month number (0 = none), L = length of each lunar month (29/30).
+   Cross-checked against live Vietnamese calendar sites, e.g.:
+     - Tết 2026 = 17/02/2026 (thuvienphapluat.vn, vietnamnet.vn)
+     - 30/06/2026 = 16/5 âm Bính Ngọ (baoquocte.vn)
+     - 2025 nhuận tháng 6, Tết 29/01/2025 (thuvienphapluat.vn, giadinh.suckhoedoisong.vn)
+     - 2023 nhuận tháng 2, Tết 22/01/2023 (cafebiz.vn, kinhtedothi.vn)            */
+const LUNAR={
+  2018:{t:"2018-02-16",lp:0,L:[29,30,29,30,29,29,30,29,29,30,30,30]},
+  2019:{t:"2019-02-05",lp:0,L:[29,30,30,29,30,29,29,30,29,29,30,30]},
+  2020:{t:"2020-01-25",lp:4,L:[29,30,30,30,29,30,29,29,30,29,29,30,30]},
+  2021:{t:"2021-02-12",lp:0,L:[29,30,30,29,30,29,30,29,30,29,30,29]},
+  2022:{t:"2022-02-01",lp:0,L:[30,29,30,29,30,30,29,30,29,30,29,30]},
+  2023:{t:"2023-01-22",lp:2,L:[29,30,29,29,30,30,29,30,30,29,30,29,30]},
+  2024:{t:"2024-02-10",lp:0,L:[29,30,29,29,30,29,30,30,29,30,30,29]},
+  2025:{t:"2025-01-29",lp:6,L:[30,29,30,29,29,30,29,30,29,30,30,30,29]},
+  2026:{t:"2026-02-17",lp:0,L:[30,29,30,29,29,30,29,29,30,30,30,29]},
+  2027:{t:"2027-02-06",lp:0,L:[30,30,29,30,29,29,30,29,29,30,30,29]},
+  2028:{t:"2028-01-26",lp:5,L:[30,30,30,29,30,29,29,30,29,29,30,30,29]},
+  2029:{t:"2029-02-13",lp:0,L:[30,30,29,30,29,30,29,30,29,29,30,29]},
+  2030:{t:"2030-02-02",lp:0,L:[30,30,29,30,30,29,30,29,30,29,30,29]},
+  2031:{t:"2031-01-23",lp:3,L:[29,30,29,30,30,29,30,30,29,30,29,30,29]},
+  2032:{t:"2032-02-11",lp:0,L:[29,30,29,30,29,30,30,29,30,30,29,30]},
+  2033:{t:"2033-01-31",lp:11,L:[29,30,29,29,30,29,30,29,30,30,30,29,30]},
+  2034:{t:"2034-02-19",lp:0,L:[29,30,29,29,30,29,29,30,30,30,29,30]},
+  2035:{t:"2035-02-08",lp:0,L:[30,29,30,29,29,30,29,29,30,30,29,30]},
+  2036:{t:"2036-01-28",lp:6,L:[30,30,29,30,29,29,30,29,29,30,29,30,30]},
+  2037:{t:"2037-02-15",lp:0,L:[30,29,30,30,29,29,30,29,29,30,29,30]},
+  2038:{t:"2038-02-04",lp:0,L:[30,29,30,30,29,30,29,30,29,29,30,29]},
+  2039:{t:"2039-01-24",lp:5,L:[30,30,29,30,30,29,30,29,30,29,29,30,29]},
+  2040:{t:"2040-02-12",lp:0,L:[30,29,30,30,29,30,29,30,30,29,30,29]},
+  2041:{t:"2041-02-01",lp:0,L:[29,30,29,30,29,30,29,30,30,30,29,30]},
+  2042:{t:"2042-01-22",lp:2,L:[29,30,29,29,30,29,30,29,30,30,29,30,30]},
+  2043:{t:"2043-02-10",lp:0,L:[29,30,29,29,30,29,29,30,30,29,30,30]},
+  2044:{t:"2044-01-30",lp:7,L:[30,29,30,29,29,30,29,29,30,29,30,30,30]},
+  2045:{t:"2045-02-17",lp:0,L:[30,29,30,29,29,30,29,29,30,29,30,30]}
+};
+const LUNAR_MIN=2018, LUNAR_MAX=2045;
+
+/* days between two Y-M-D solar dates (UTC, no DST issues) */
+function daysBetween(d1,d2){
+  const a=Date.UTC(d1[2],d1[1]-1,d1[0]);
+  const b=Date.UTC(d2[2],d2[1]-1,d2[0]);
+  return Math.round((a-b)/86400000);
+}
+
+/* Pure table lookup. Returns {day,month,year,leap} or null if out of range. */
+function convertSolar2Lunar(dd,mm,yy){
+  // pick the lunar year whose Tết is on/before this date
+  for(let ly=Math.min(yy,LUNAR_MAX); ly>=LUNAR_MIN; ly--){
+    const e=LUNAR[ly]; if(!e) continue;
+    const [ty,tm,td]=e.t.split("-").map(Number);
+    let off=daysBetween([dd,mm,yy],[td,tm,ty]);  // days since Tết
+    if(off<0) continue;                            // before this Tết → try earlier year
+    // walk months
+    for(let i=0;i<e.L.length;i++){
+      if(off < e.L[i]){
+        let monthNum, isLeap=false;
+        if(e.lp===0){ monthNum=i+1; }
+        else if(i<e.lp){ monthNum=i+1; }
+        else if(i===e.lp){ monthNum=e.lp; isLeap=true; }
+        else { monthNum=i; }
+        return {day:off+1, month:monthNum, year:ly, leap:isLeap?1:0};
+      }
+      off-=e.L[i];
+    }
+    // off ran past this year (shouldn't happen) → next year handles it
+  }
+  return null;
+}
+
+/* ---------- Categories (số dư -> kết quả) ---------- */
+const CATS={
+  1:{name:"Đại an", q:"good", quality:"Rất tốt",
+     desc:"Mọi việc đều tốt, cầu tài đi hướng Tây Nam. Nhà cửa yên lành, người xuất hành đều bình yên."},
+  2:{name:"Tốc hỉ", q:"good", quality:"Tốt",
+     desc:"Niềm vui sắp tới, cầu tài đi hướng Nam, đi việc quan nhiều may mắn. Người xuất hành bình yên, chăn nuôi thuận lợi, người đi có tin về."},
+  3:{name:"Lưu niên", q:"bad", quality:"Xấu",
+     desc:"Nghiệp khó thành, cầu tài mờ mịt, kiện cáo nên hoãn lại. Người đi chưa có tin về, đi hướng Nam tìm nhanh mới thấy. Phòng cãi cọ, miệng tiếng. Việc làm chậm nhưng chắc chắn."},
+  4:{name:"Xích khẩu", q:"bad", quality:"Xấu",
+     desc:"Hay cãi cọ, gây chuyện đói kém, phải nên đề phòng. Người ra đi nên hoãn lại, phòng người nguyền rủa, tránh lây bệnh."},
+  5:{name:"Tiểu cát", q:"good", quality:"Rất tốt",
+     desc:"Rất tốt lành, đi đường gặp may mắn, buôn bán có lời. Phụ nữ báo tin mừng, người đi sắp về nhà. Mọi việc hoà hợp, có bệnh cầu sẽ khỏi, người nhà đều mạnh khoẻ."},
+  6:{name:"Tuyệt lộ", q:"bad", quality:"Xấu",
+     desc:"Cầu tài không có lợi, hay bị trái ý, ra đi gặp hạn. Việc quan phải đòn, gặp ma quỷ phải cúng lễ mới mong được an."}
+};
+
+/* time -> Khắc định đi (1..6). Tý 23h là khắc 1. */
+function khacFromHour(h){ return ((Math.floor(((h+1)%24)/2))%6)+1; }
+
+/* số dư từ ngày/tháng âm + khắc */
+function remainder(lunarDay,lunarMonth,khac){
+  let r=(lunarDay+lunarMonth+khac-2)%6;
+  return r===0?6:r; // 0 và 6 đều là Tuyệt lộ
+}
+
+/* 12 khung giờ trong ngày, kèm tên canh giờ */
+const SLOTS=[
+  {h:23,label:"23–01",chi:"Tý"},
+  {h:1, label:"01–03",chi:"Sửu"},
+  {h:3, label:"03–05",chi:"Dần"},
+  {h:5, label:"05–07",chi:"Mão"},
+  {h:7, label:"07–09",chi:"Thìn"},
+  {h:9, label:"09–11",chi:"Tỵ"},
+  {h:11,label:"11–13",chi:"Ngọ"},
+  {h:13,label:"13–15",chi:"Mùi"},
+  {h:15,label:"15–17",chi:"Thân"},
+  {h:17,label:"17–19",chi:"Dậu"},
+  {h:19,label:"19–21",chi:"Tuất"},
+  {h:21,label:"21–23",chi:"Hợi"}
+];
+const QCLASS={good:"good", bad:"bad"};
+
+/* ---------- UI ---------- */
+const $=id=>document.getElementById(id);
+function pad(n){return String(n).padStart(2,"0");}
+
+function showLunar(){
+  const d=$("date").value; if(!d) return null;
+  const [y,m,dd]=d.split("-").map(Number);
+  const L=convertSolar2Lunar(dd,m,y);
+  if(!L){ $("lunarNote").innerHTML=`<span style="color:var(--bad)">Ngoài phạm vi tra cứu (${LUNAR_MIN}–${LUNAR_MAX})</span>`; return null; }
+  $("lunarNote").textContent=`Âm lịch: ngày ${L.day} tháng ${L.month}${L.leap?" (nhuận)":""} năm ${L.year}`;
+  return L;
+}
+
+function run(){
+  const dStr=$("date").value, tStr=$("time").value;
+  if(!dStr||!tStr){ alert("Vui lòng chọn ngày và giờ."); return; }
+  const [y,m,dd]=dStr.split("-").map(Number);
+  const [hh]=tStr.split(":").map(Number);
+  const L=convertSolar2Lunar(dd,m,y);
+  if(!L){ showLunar(); $("result").classList.remove("show");
+    alert(`Chỉ tra cứu được các năm từ ${LUNAR_MIN} đến ${LUNAR_MAX}.`); return; }
+  showLunar();
+
+  const khac=khacFromHour(hh);
+  const r=remainder(L.day,L.month,khac);
+  const cat=CATS[r];
+
+  // verdict
+  $("remainder").textContent=(r===6?"6 / 0":r);
+  $("catName").textContent=cat.name;
+  $("catQuality").textContent=cat.quality;
+  $("catDesc").textContent=cat.desc;
+  const v=$("verdict");
+  v.className="verdict "+(cat.q==="good"?"v-good":"v-bad");
+  $("calcLine").innerHTML=
+    `( Ngày âm <b>${L.day}</b> + Tháng âm <b>${L.month}</b> + Khắc <b>${khac}</b> − 2 ) ÷ 6 → số dư <b>${r===6?"0":r}</b>`;
+  $("result").classList.add("show");
+
+  // slots for the day
+  const selectedSlot=slotHourOf(hh);
+  const box=$("slots"); box.innerHTML="";
+  SLOTS.forEach(s=>{
+    const sk=khacFromHour(s.h);
+    const sr=remainder(L.day,L.month,sk);
+    const sc=CATS[sr];
+    const div=document.createElement("div");
+    div.className="slot "+(sc.q==="good"?"s-good":"s-bad")+(s.h===selectedSlot?" now":"");
+    div.innerHTML=`<span class="hrs">${s.label}<br><small style="font-weight:400;color:var(--muted)">${s.chi}</small></span>`+
+                  `<span class="cat"><b>${sc.name}</b><br>${sc.quality}</span>`;
+    box.appendChild(div);
+  });
+}
+
+/* which slot-start-hour an arbitrary hour belongs to (for "now" highlight) */
+function slotHourOf(h){
+  const base=[23,1,3,5,7,9,11,13,15,17,19,21];
+  const idx=(Math.floor(((h+1)%24)/2))%12;
+  return base[idx];
+}
+
+/* init */
+(function(){
+  const now=new Date();
+  $("date").value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  $("time").value=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  showLunar();
+  $("calcBtn").addEventListener("click",run);
+  $("date").addEventListener("change",showLunar);
+})();
+</script>
+</body>
+</html>
