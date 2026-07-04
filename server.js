@@ -165,6 +165,51 @@ async function interpret(req, res, url) {
   }
 }
 
+// GET /api/health — pings each model so you can see which stage (if any) is
+// misconfigured, just by opening this URL in a browser.
+async function health(req, res) {
+  const out = {
+    key_present: !!OPENAI_API_KEY,
+    models: { stt: STT_MODEL, translate: TRANSLATE_MODEL, tts: TTS_MODEL },
+    translate: "not tested", tts: "not tested", stt: "not tested",
+  };
+  if (!OPENAI_API_KEY) return json(res, 200, out);
+
+  // Translate model check
+  try {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: TRANSLATE_MODEL, messages: [{ role: "user", content: "Reply with: ok" }] }),
+    });
+    out.translate = r.ok ? "OK" : "ERROR " + r.status + ": " + (await r.text()).slice(0, 220);
+  } catch (e) { out.translate = "ERROR " + String(e.message || e); }
+
+  // TTS model check
+  try {
+    const r = await fetch("https://api.openai.com/v1/audio/speech", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: TTS_MODEL, voice: TTS_VOICE, input: "ok" }),
+    });
+    out.tts = r.ok ? "OK" : "ERROR " + r.status + ": " + (await r.text()).slice(0, 220);
+  } catch (e) { out.tts = "ERROR " + String(e.message || e); }
+
+  // STT model check (tiny non-audio; a "model not found" error names the model,
+  // any other error means the model itself resolved fine).
+  try {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from("test-not-audio")], { type: "audio/webm" }), "a.webm");
+    form.append("model", STT_MODEL);
+    const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST", headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }, body: form,
+    });
+    out.stt = r.ok ? "OK" : "HTTP " + r.status + ": " + (await r.text()).slice(0, 220);
+  } catch (e) { out.stt = "ERROR " + String(e.message || e); }
+
+  return json(res, 200, out);
+}
+
 async function serveStatic(req, res, url) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === "/") pathname = "/index.html";
@@ -181,6 +226,7 @@ async function serveStatic(req, res, url) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname === "/api/interpret" && req.method === "POST") return interpret(req, res, url);
+  if (url.pathname === "/api/health" && req.method === "GET") return health(req, res);
   if (req.method === "GET") return serveStatic(req, res, url);
   return send(res, 405, "Method not allowed");
 });
