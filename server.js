@@ -4,10 +4,12 @@
 //   2. Mint short-lived OpenAI "client secrets" so the browser can open a
 //      WebRTC session WITHOUT ever seeing the real OPENAI_API_KEY.
 //
-// Uses gpt-realtime-translate: a dedicated speech-to-speech TRANSLATION model.
-// Unlike a conversational model, it only ever translates — it never chats,
-// narrates, or answers. The output language is locked per session (set by the
-// direction toggle), so it can't drift into other languages.
+// Two selectable engines:
+//   - "translate": gpt-realtime-translate. A dedicated translator — it can only
+//     translate, never chats. More literal, not tunable.
+//   - "pro": gpt-realtime-2. A GPT-5-class voice model tuned HARD (few-shot
+//     examples + low temperature) to behave as a strict translator. Higher
+//     quality, but being a conversational model it may rarely slip.
 //
 // Run:  OPENAI_API_KEY=sk-... npm start
 
@@ -19,8 +21,6 @@ import { dirname, join, normalize, extname } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load a local .env file (if present) so you can keep OPENAI_API_KEY in a file
-// instead of typing it into the terminal. Real environment values win.
 function loadEnvFile() {
   try {
     const raw = readFileSync(join(__dirname, ".env"), "utf8");
@@ -38,9 +38,7 @@ function loadEnvFile() {
       if (key && process.env[key] === undefined) process.env[key] = val;
     }
     console.log("  ✓  Loaded settings from .env file");
-  } catch {
-    // No .env file — rely on real environment variables.
-  }
+  } catch {}
 }
 
 loadEnvFile();
@@ -49,8 +47,38 @@ const PUBLIC_DIR = join(__dirname, "public");
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const MODEL = "gpt-realtime-translate";
+const MODEL_TRANSLATE = "gpt-realtime-translate";
+const MODEL_PRO = "gpt-realtime-2";
+const VOICE = "marin";
 const LANG_NAMES = { en: "English", vi: "Vietnamese" };
+
+// Directional interpreter instruction for the "pro" (conversational) engine.
+// Few-shot examples + strict rules do the heavy lifting of keeping it a
+// translator instead of an assistant.
+function buildInstructions(from, to) {
+  const F = LANG_NAMES[from], T = LANG_NAMES[to];
+  const viNote = to === "vi"
+    ? `\n5. Use correct Vietnamese kinship pronouns/politeness (tôi, con, anh, em, chị, cô, chú, bác, ông, bà) from context; default to polite forms when unclear.`
+    : "";
+  const examples = from === "vi"
+    ? `Speaker: "Em tên là Minh." → You: "My name is Minh."
+Speaker: "Bây giờ mấy giờ rồi?" → You: "What time is it now?"   (you TRANSLATE the question — you never answer it)`
+    : `Speaker: "My name is Minh." → You: "Tên tôi là Minh."
+Speaker: "What time is it now?" → You: "Bây giờ là mấy giờ rồi?"   (you TRANSLATE the question — you never answer it)`;
+
+  return `You are a professional simultaneous interpreter — a TRANSLATION MACHINE, never a conversation partner. The speaker speaks ${F}. Render everything they say into natural, fluent ${T}.
+
+STRICT RULES:
+1. Output ONLY ${T}. Never speak ${F} or any other language.
+2. TRANSLATE, never respond. Never answer, greet, agree, thank, acknowledge, or add filler ("okay", "sure", "let me translate", "one moment"). If the speaker asks a question, translate the QUESTION into ${T} — do NOT answer it.
+3. Output nothing but the translation itself — no commentary, no narration.
+4. Preserve meaning, tone, emotion, numbers, names, dates exactly. Match the speaker's register.${viNote}
+
+EXAMPLES — this is the ONLY behavior allowed:
+${examples}
+
+You never break character. For each thing said, you speak ONLY its ${T} translation, then wait silently.`;
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -66,7 +94,7 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
-// POST /api/session?to=en|vi  ->  { client_secret, output_language }
+// POST /api/session?engine=translate|pro&from=vi|en&to=en|vi
 async function createSession(req, res, url) {
   if (!OPENAI_API_KEY) {
     return send(res, 500, JSON.stringify({
@@ -74,73 +102,79 @@ async function createSession(req, res, url) {
     }), { "Content-Type": MIME[".json"] });
   }
 
+  const engine = (url.searchParams.get("engine") || "translate").toLowerCase();
+  const from = (url.searchParams.get("from") || "vi").toLowerCase();
   const to = (url.searchParams.get("to") || "en").toLowerCase();
-  if (!LANG_NAMES[to]) {
-    return send(res, 400, JSON.stringify({
-      error: `Unsupported output language "${to}". Use "en" or "vi".`,
-    }), { "Content-Type": MIME[".json"] });
+  if (!LANG_NAMES[from] || !LANG_NAMES[to] || from === to) {
+    return send(res, 400, JSON.stringify({ error: `Invalid direction "${from}->${to}".` }),
+      { "Content-Type": MIME[".json"] });
   }
 
-  const payload = {
-    session: {
-      model: MODEL,
-      audio: {
-        input: {
-          transcription: { model: "gpt-realtime-whisper" },
-          // near_field = clean pickup of a person speaking into the device.
-          noise_reduction: { type: "near_field" },
+  let endpoint, payload;
+  if (engine === "pro") {
+    endpoint = "https://api.openai.com/v1/realtime/client_secrets";
+    payload = {
+      session: {
+        type: "realtime",
+        model: MODEL_PRO,
+        instructions: buildInstructions(from, to),
+        temperature: 0.6, // lowest allowed — makes it mechanical, less "chatty"
+        audio: {
+          input: {
+            transcription: { model: "gpt-realtime-whisper" },
+            noise_reduction: { type: "near_field" },
+            turn_detection: { type: "semantic_vad" },
+          },
+          output: { voice: VOICE },
         },
-        output: { language: to },
       },
-    },
-  };
+    };
+  } else {
+    endpoint = "https://api.openai.com/v1/realtime/translations/client_secrets";
+    payload = {
+      session: {
+        model: MODEL_TRANSLATE,
+        audio: {
+          input: {
+            transcription: { model: "gpt-realtime-whisper" },
+            noise_reduction: { type: "near_field" },
+          },
+          output: { language: to },
+        },
+      },
+    };
+  }
 
   try {
-    const r = await fetch(
-      "https://api.openai.com/v1/realtime/translations/client_secrets",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      }
-    );
-
+    const r = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
     const text = await r.text();
     if (!r.ok) {
       console.error("OpenAI client_secrets error:", r.status, text);
       return send(res, 502, JSON.stringify({
-        error: "Failed to create OpenAI session.",
-        status: r.status,
-        detail: text.slice(0, 500),
+        error: "Failed to create OpenAI session.", status: r.status, detail: text.slice(0, 500),
       }), { "Content-Type": MIME[".json"] });
     }
-
     const data = JSON.parse(text);
     const clientSecret =
-      data.value ??
-      data.client_secret?.value ??
+      data.value ?? data.client_secret?.value ??
       (typeof data.client_secret === "string" ? data.client_secret : null);
-
     if (!clientSecret) {
-      console.error("Unexpected client_secrets response shape:", text.slice(0, 500));
-      return send(res, 502, JSON.stringify({
-        error: "Could not find client secret in OpenAI response.",
-      }), { "Content-Type": MIME[".json"] });
+      console.error("Unexpected client_secrets response:", text.slice(0, 500));
+      return send(res, 502, JSON.stringify({ error: "Could not find client secret in OpenAI response." }),
+        { "Content-Type": MIME[".json"] });
     }
-
     return send(res, 200, JSON.stringify({
       client_secret: clientSecret,
-      output_language: to,
-      expires_at: data.expires_at ?? data.client_secret?.expires_at ?? null,
+      engine: engine === "pro" ? "pro" : "translate",
+      model: engine === "pro" ? MODEL_PRO : MODEL_TRANSLATE,
     }), { "Content-Type": MIME[".json"] });
   } catch (err) {
     console.error("Session creation failed:", err);
-    return send(res, 500, JSON.stringify({ error: String(err) }), {
-      "Content-Type": MIME[".json"],
-    });
+    return send(res, 500, JSON.stringify({ error: String(err) }), { "Content-Type": MIME[".json"] });
   }
 }
 
@@ -151,8 +185,7 @@ async function serveStatic(req, res, url) {
   if (!filePath.startsWith(PUBLIC_DIR)) return send(res, 403, "Forbidden");
   try {
     const data = await readFile(filePath);
-    const type = MIME[extname(filePath)] || "application/octet-stream";
-    return send(res, 200, data, { "Content-Type": type });
+    return send(res, 200, data, { "Content-Type": MIME[extname(filePath)] || "application/octet-stream" });
   } catch {
     return send(res, 404, "Not found");
   }
@@ -167,9 +200,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n  Live Interpreter running at http://localhost:${PORT}`);
-  if (!OPENAI_API_KEY) {
-    console.log("  ⚠  OPENAI_API_KEY is NOT set — sessions will fail until you export it.\n");
-  } else {
-    console.log("  ✓  OPENAI_API_KEY detected.\n");
-  }
+  console.log(OPENAI_API_KEY
+    ? "  ✓  OPENAI_API_KEY detected.\n"
+    : "  ⚠  OPENAI_API_KEY is NOT set — sessions will fail until you export it.\n");
 });

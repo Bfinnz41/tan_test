@@ -31,8 +31,13 @@
   .dot.ready { background: var(--ok); }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
+  .engine { display: flex; gap: 6px; margin: 14px 18px 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+  .eng { flex: 1; padding: 8px 6px; border: none; border-radius: 9px; background: transparent; color: var(--muted); font-size: .82rem; font-weight: 600; cursor: pointer; }
+  .eng.active { background: var(--accent); color: #fff; }
+  .eng small { display: block; font-size: .62rem; font-weight: 500; opacity: .8; margin-top: 1px; }
+
   .direction {
-    display: flex; align-items: stretch; gap: 0; margin: 16px 18px 0;
+    display: flex; align-items: stretch; gap: 0; margin: 10px 18px 0;
     background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
   }
   .lang { flex: 1; text-align: center; padding: 12px 8px; }
@@ -47,7 +52,7 @@
   }
   .swap:active { background: var(--accent); color: #fff; }
 
-  main { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; overflow: hidden; }
+  main { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; overflow: hidden; }
   .track { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; }
   .track.src { flex: 1; }
   .track.dst { flex: 1.15; border-color: #2f3a55; }
@@ -81,10 +86,15 @@
   <header>
     <div>
       <h1>Live Interpreter</h1>
-      <div class="sub">English ⇄ Vietnamese · gpt-realtime-translate</div>
+      <div class="sub" id="sub">English ⇄ Vietnamese</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
   </header>
+
+  <div class="engine" id="engine">
+    <button class="eng active" data-engine="translate">Reliable<small>never chats</small></button>
+    <button class="eng" data-engine="pro">Higher quality<small>may rarely slip</small></button>
+  </div>
 
   <div class="direction" id="direction">
     <div class="lang input" id="langFrom">
@@ -116,7 +126,7 @@
       <button class="mic" id="mic"><span class="ico">🎙️</span><span id="micText">Start interpreting</span></button>
       <button class="toggle" id="audioToggle" title="Voice on/off">🔊</button>
     </div>
-    <div class="hint" id="hint">Set the direction above, then tap to start.</div>
+    <div class="hint" id="hint">Pick an engine + direction, then tap to start.</div>
   </footer>
 
   <audio id="remoteAudio" autoplay></audio>
@@ -134,13 +144,11 @@
   const srcText = $("srcText"), dstText = $("dstText");
   const remoteAudio = $("remoteAudio"), audioToggle = $("audioToggle");
 
-  // Direction chosen by the toggle. Default: Vietnamese in → English out.
+  let engine = "translate";       // "translate" | "pro"
   let from = "vi", to = "en";
-  let running = false;
-  let playAudio = true;
+  let running = false, playAudio = true;
   let pc = null, dc = null, micStream = null;
-  let srcBuf = "", dstBuf = "";
-  let srcSegHasDelta = false;
+  let srcBuf = "", dstBuf = "", srcSegHasDelta = false;
 
   const setStatus = (state, text) => { dot.className = "dot" + (state ? " " + state : ""); statusText.textContent = text; };
 
@@ -149,17 +157,24 @@
     $("toFlag").textContent = LANGS[to].flag;     $("toName").textContent = LANGS[to].name;
     $("srcLabel").textContent = "You said (" + LANGS[from].name + ")";
     $("dstLabel").textContent = "Translation (" + LANGS[to].name + ")";
+    $("sub").textContent = "English ⇄ Vietnamese · " + (engine === "pro" ? "gpt-realtime-2" : "gpt-realtime-translate");
   }
+
+  async function reconnectIfRunning() {
+    if (running) { setStatus("connecting", "Switching…"); await stop(true); await start(); }
+  }
+
+  document.querySelectorAll(".eng").forEach((b) => b.addEventListener("click", async () => {
+    engine = b.dataset.engine;
+    document.querySelectorAll(".eng").forEach((x) => x.classList.toggle("active", x === b));
+    renderDirection();
+    await reconnectIfRunning();
+  }));
 
   $("swap").addEventListener("click", async () => {
     [from, to] = [to, from];
     renderDirection();
-    if (running) {
-      // Reconnect with the new direction (deliberate, occasional action).
-      setStatus("connecting", "Switching…");
-      await stop(true);
-      await start();
-    }
+    await reconnectIfRunning();
   });
 
   audioToggle.addEventListener("click", () => {
@@ -167,43 +182,45 @@
     remoteAudio.muted = !playAudio;
     audioToggle.textContent = playAudio ? "🔊" : "🔇";
     audioToggle.classList.toggle("off", !playAudio);
-    audioToggle.title = playAudio ? "Voice on — tap for transcript only" : "Transcript only — tap for voice";
   });
 
   micBtn.addEventListener("click", () => (running ? stop() : start()));
 
   async function start() {
     try {
-      srcBuf = ""; dstBuf = ""; srcText.textContent = ""; dstText.textContent = "";
-      srcSegHasDelta = false;
+      srcBuf = ""; dstBuf = ""; srcText.textContent = ""; dstText.textContent = ""; srcSegHasDelta = false;
       setStatus("connecting", "Connecting…");
       micBtn.disabled = true; micText.textContent = "Connecting…";
       hint.classList.remove("error");
 
-      // 1. Client secret from our server. `to` = the language to translate INTO.
-      const res = await fetch("/api/session?to=" + to, { method: "POST" });
+      const res = await fetch("/api/session?engine=" + engine + "&from=" + from + "&to=" + to, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Session request failed");
       const clientSecret = data.client_secret;
+      const isPro = data.engine === "pro";
 
-      // 2. WebRTC peer connection.
       pc = new RTCPeerConnection();
       pc.ontrack = ({ streams }) => { remoteAudio.srcObject = streams[0]; remoteAudio.muted = !playAudio; };
-
       dc = pc.createDataChannel("oai-events");
       dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handleEvent(m); };
+      if (isPro) {
+        dc.onopen = () => dc.send(JSON.stringify({
+          type: "session.update",
+          session: { type: "realtime", audio: { input: { transcription: { model: "gpt-realtime-whisper" } } } },
+        }));
+      }
 
-      // 3. Mic. Clean settings (suppression + echo cancel ON) reduce noise and
-      // stop the translated audio from looping back in — use headphones too.
       micStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       micStream.getAudioTracks().forEach((t) => pc.addTrack(t, micStream));
 
-      // 4. SDP handshake with OpenAI.
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const sdpRes = await fetch("https://api.openai.com/v1/realtime/translations/calls", {
+      const sdpUrl = isPro
+        ? "https://api.openai.com/v1/realtime/calls?model=" + encodeURIComponent(data.model || "gpt-realtime-2")
+        : "https://api.openai.com/v1/realtime/translations/calls";
+      const sdpRes = await fetch(sdpUrl, {
         method: "POST",
         headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/sdp" },
         body: offer.sdp,
@@ -212,22 +229,18 @@
       await pc.setRemoteDescription({ type: "answer", sdp: await sdpRes.text() });
 
       running = true;
-      micBtn.disabled = false;
-      micBtn.classList.add("recording");
-      micText.textContent = "Stop";
+      micBtn.disabled = false; micBtn.classList.add("recording"); micText.textContent = "Stop";
       hint.textContent = "Listening… speak " + LANGS[from].name + ".";
       setStatus("live", LANGS[from].name + " → " + LANGS[to].name);
     } catch (err) {
       console.error(err);
-      hint.textContent = "Error: " + err.message;
-      hint.classList.add("error");
+      hint.textContent = "Error: " + err.message; hint.classList.add("error");
       setStatus("", "Error");
       micBtn.disabled = false; micText.textContent = "Start interpreting";
       await stop(true);
     }
   }
 
-  // quiet=true when reconnecting (don't overwrite status/hint).
   async function stop(quiet) {
     running = false;
     micBtn.classList.remove("recording");
@@ -242,27 +255,39 @@
     dc = null; pc = null; micStream = null;
   }
 
+  // Handles BOTH engines' event schemas (names don't collide).
   function handleEvent(msg) {
     const t = msg.type || "";
-    if (t === "session.input_transcript.delta") {
-      srcSegHasDelta = true;
-      srcBuf += msg.delta || "";
-      srcText.textContent = srcBuf;
-      srcText.scrollTop = srcText.scrollHeight;
-    } else if (t === "session.input_transcript.done") {
-      if (!srcSegHasDelta && msg.transcript) { srcBuf += msg.transcript; srcText.textContent = srcBuf; }
-      srcBuf += "\n"; srcSegHasDelta = false;
-    } else if (t === "session.output_transcript.delta") {
-      dstBuf += msg.delta || "";
-      dstText.textContent = dstBuf;
-      dstText.scrollTop = dstText.scrollHeight;
-    } else if (t === "session.output_transcript.done") {
-      dstBuf += "\n";
-    } else if (t === "error") {
+    // Input transcript — translate engine
+    if (t === "session.input_transcript.delta") { appendSrc(msg.delta); }
+    else if (t === "session.input_transcript.done") { finishSrc(msg.transcript); }
+    // Input transcript — pro engine
+    else if (t === "conversation.item.input_audio_transcription.delta") { appendSrc(msg.delta); }
+    else if (t === "conversation.item.input_audio_transcription.completed") { finishSrc(msg.transcript); }
+    // Output transcript — translate engine
+    else if (t === "session.output_transcript.delta") { appendDst(msg.delta); }
+    else if (t === "session.output_transcript.done") { dstBuf += "\n"; }
+    // Output transcript — pro engine
+    else if (t === "response.output_audio_transcript.delta" || t === "response.audio_transcript.delta") { appendDst(msg.delta); }
+    else if (t === "response.output_audio_transcript.done" || t === "response.audio_transcript.done") { dstBuf += "\n"; }
+    // Errors
+    else if (t === "error") {
       console.error("Realtime error:", msg);
-      hint.textContent = "Error: " + (msg.error?.message || "realtime error");
-      hint.classList.add("error");
+      hint.textContent = "Error: " + (msg.error?.message || "realtime error"); hint.classList.add("error");
     }
+  }
+
+  function appendSrc(delta) {
+    srcSegHasDelta = true; srcBuf += delta || "";
+    srcText.textContent = srcBuf; srcText.scrollTop = srcText.scrollHeight;
+  }
+  function finishSrc(transcript) {
+    if (!srcSegHasDelta && transcript) { srcBuf += transcript; srcText.textContent = srcBuf; }
+    srcBuf += "\n"; srcSegHasDelta = false;
+  }
+  function appendDst(delta) {
+    dstBuf += delta || "";
+    dstText.textContent = dstBuf; dstText.scrollTop = dstText.scrollHeight;
   }
 
   renderDirection();
