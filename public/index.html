@@ -81,7 +81,7 @@
   <header>
     <div>
       <h1>Live Interpreter</h1>
-      <div class="sub">English ⇄ Vietnamese · gpt-realtime-2</div>
+      <div class="sub">English ⇄ Vietnamese · gpt-realtime-translate</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
   </header>
@@ -180,12 +180,11 @@
       micBtn.disabled = true; micText.textContent = "Connecting…";
       hint.classList.remove("error");
 
-      // 1. Client secret from our server for this direction.
-      const res = await fetch("/api/session?from=" + from + "&to=" + to, { method: "POST" });
+      // 1. Client secret from our server. `to` = the language to translate INTO.
+      const res = await fetch("/api/session?to=" + to, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Session request failed");
       const clientSecret = data.client_secret;
-      const model = data.model || "gpt-realtime-2";
 
       // 2. WebRTC peer connection.
       pc = new RTCPeerConnection();
@@ -193,23 +192,18 @@
 
       dc = pc.createDataChannel("oai-events");
       dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handleEvent(m); };
-      dc.onopen = () => {
-        dc.send(JSON.stringify({
-          type: "session.update",
-          session: { type: "realtime", audio: { input: { transcription: { model: "gpt-realtime-whisper" } } } },
-        }));
-      };
 
-      // 3. Mic. noiseSuppression off so a phone speaker held nearby isn't filtered out.
+      // 3. Mic. Clean settings (suppression + echo cancel ON) reduce noise and
+      // stop the translated audio from looping back in — use headphones too.
       micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       micStream.getAudioTracks().forEach((t) => pc.addTrack(t, micStream));
 
       // 4. SDP handshake with OpenAI.
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls?model=" + encodeURIComponent(model), {
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/translations/calls", {
         method: "POST",
         headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/sdp" },
         body: offer.sdp,
@@ -250,19 +244,19 @@
 
   function handleEvent(msg) {
     const t = msg.type || "";
-    if (t === "conversation.item.input_audio_transcription.delta") {
+    if (t === "session.input_transcript.delta") {
       srcSegHasDelta = true;
       srcBuf += msg.delta || "";
       srcText.textContent = srcBuf;
       srcText.scrollTop = srcText.scrollHeight;
-    } else if (t === "conversation.item.input_audio_transcription.completed") {
+    } else if (t === "session.input_transcript.done") {
       if (!srcSegHasDelta && msg.transcript) { srcBuf += msg.transcript; srcText.textContent = srcBuf; }
       srcBuf += "\n"; srcSegHasDelta = false;
-    } else if (t === "response.output_audio_transcript.delta" || t === "response.audio_transcript.delta") {
+    } else if (t === "session.output_transcript.delta") {
       dstBuf += msg.delta || "";
       dstText.textContent = dstBuf;
       dstText.scrollTop = dstText.scrollHeight;
-    } else if (t === "response.output_audio_transcript.done" || t === "response.audio_transcript.done") {
+    } else if (t === "session.output_transcript.done") {
       dstBuf += "\n";
     } else if (t === "error") {
       console.error("Realtime error:", msg);

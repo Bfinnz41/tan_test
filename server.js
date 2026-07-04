@@ -1,12 +1,15 @@
 // Live Interpreter — minimal zero-dependency Node server.
 //
-// Responsibilities:
 //   1. Serve the static frontend in ./public
 //   2. Mint short-lived OpenAI "client secrets" so the browser can open a
-//      WebRTC session with gpt-realtime-translate WITHOUT ever seeing the
-//      real OPENAI_API_KEY.
+//      WebRTC session WITHOUT ever seeing the real OPENAI_API_KEY.
 //
-// Run:  OPENAI_API_KEY=sk-... npm start   (or put it in a .env-style export)
+// Uses gpt-realtime-translate: a dedicated speech-to-speech TRANSLATION model.
+// Unlike a conversational model, it only ever translates — it never chats,
+// narrates, or answers. The output language is locked per session (set by the
+// direction toggle), so it can't drift into other languages.
+//
+// Run:  OPENAI_API_KEY=sk-... npm start
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -17,8 +20,7 @@ import { dirname, join, normalize, extname } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load a local .env file (if present) so you can keep OPENAI_API_KEY in a file
-// instead of typing it into the terminal. Values already set in the real
-// environment win, so an explicit `export`/`$env:` still overrides the file.
+// instead of typing it into the terminal. Real environment values win.
 function loadEnvFile() {
   try {
     const raw = readFileSync(join(__dirname, ".env"), "utf8");
@@ -30,18 +32,14 @@ function loadEnvFile() {
       if (eq === -1) continue;
       const key = line.slice(0, eq).trim();
       let val = line.slice(eq + 1).trim();
-      // Strip surrounding quotes if present.
-      if (
-        (val.startsWith('"') && val.endsWith('"')) ||
-        (val.startsWith("'") && val.endsWith("'"))
-      ) {
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
       if (key && process.env[key] === undefined) process.env[key] = val;
     }
     console.log("  ✓  Loaded settings from .env file");
   } catch {
-    // No .env file — that's fine; rely on real environment variables.
+    // No .env file — rely on real environment variables.
   }
 }
 
@@ -51,34 +49,8 @@ const PUBLIC_DIR = join(__dirname, "public");
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// The interpreter model + voice. gpt-realtime-2 is promptable (unlike the
-// translate model), so we can constrain languages and control Vietnamese
-// politeness. Swap MODEL/VOICE here if you want to try others.
-const MODEL = "gpt-realtime-2";
-const VOICE = "marin";
-
+const MODEL = "gpt-realtime-translate";
 const LANG_NAMES = { en: "English", vi: "Vietnamese" };
-
-// The instruction is the whole quality lever. It is DIRECTIONAL: the speaker's
-// language is fixed by the toggle, which removes all guesswork (and kills the
-// "drifts into Thai" problem). It keeps the model a pure translator and enforces
-// natural Vietnamese kinship pronouns/register.
-function buildInstructions(from, to) {
-  const F = LANG_NAMES[from], T = LANG_NAMES[to];
-  const viNote = to === "vi"
-    ? `\n6. Use correct Vietnamese kinship pronouns and politeness (tôi, con, anh, em, chị, cô, chú, bác, ông, bà) from context; default to polite, respectful forms when unclear.`
-    : "";
-  return `You are a professional simultaneous interpreter. Your ONLY job is to translate ${F} speech into ${T}. You are a translation machine, NOT a conversation partner. The speaker is speaking ${F}.
-
-STRICT RULES — follow every one, exactly:
-1. Output ONLY ${T}. Never speak ${F} or any other language — not a single word of ${F}.
-2. TRANSLATE, never respond. Do NOT answer, agree, greet, thank, acknowledge, or add filler ("okay", "yes", "sure", "got it", "cảm ơn"). If the speaker asks a question, translate the QUESTION into ${T} — do NOT answer it.
-3. Say nothing except the translation itself. No commentary, no "the speaker said", no explanations.
-4. Preserve meaning, tone, emotion, numbers, names, dates, and places exactly.
-5. Match the speaker's register (casual vs. formal).${viNote}
-
-You never break character. For every piece of ${F} speech, you speak ONLY its ${T} translation, then wait silently for the next speech.`;
-}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -94,7 +66,7 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
-// POST /api/session?to=vi|en  ->  { client_secret, output_language }
+// POST /api/session?to=en|vi  ->  { client_secret, output_language }
 async function createSession(req, res, url) {
   if (!OPENAI_API_KEY) {
     return send(res, 500, JSON.stringify({
@@ -102,37 +74,30 @@ async function createSession(req, res, url) {
     }), { "Content-Type": MIME[".json"] });
   }
 
-  const from = (url.searchParams.get("from") || "vi").toLowerCase();
   const to = (url.searchParams.get("to") || "en").toLowerCase();
-  if (!LANG_NAMES[from] || !LANG_NAMES[to] || from === to) {
+  if (!LANG_NAMES[to]) {
     return send(res, 400, JSON.stringify({
-      error: `Invalid direction "${from}->${to}". Use en/vi, and they must differ.`,
+      error: `Unsupported output language "${to}". Use "en" or "vi".`,
     }), { "Content-Type": MIME[".json"] });
   }
 
   const payload = {
     session: {
-      type: "realtime",
       model: MODEL,
-      instructions: buildInstructions(from, to),
       audio: {
         input: {
           transcription: { model: "gpt-realtime-whisper" },
-          // "far_field" suits audio captured at a distance (e.g. another
-          // phone's speaker held near the laptop). "near_field" would treat
-          // that as background noise and filter it out.
-          noise_reduction: { type: "far_field" },
-          // Auto-respond when the speaker finishes a thought.
-          turn_detection: { type: "semantic_vad" },
+          // near_field = clean pickup of a person speaking into the device.
+          noise_reduction: { type: "near_field" },
         },
-        output: { voice: VOICE },
+        output: { language: to },
       },
     },
   };
 
   try {
     const r = await fetch(
-      "https://api.openai.com/v1/realtime/client_secrets",
+      "https://api.openai.com/v1/realtime/translations/client_secrets",
       {
         method: "POST",
         headers: {
@@ -154,7 +119,6 @@ async function createSession(req, res, url) {
     }
 
     const data = JSON.parse(text);
-    // Normalize across possible response shapes.
     const clientSecret =
       data.value ??
       data.client_secret?.value ??
@@ -169,7 +133,7 @@ async function createSession(req, res, url) {
 
     return send(res, 200, JSON.stringify({
       client_secret: clientSecret,
-      model: MODEL,
+      output_language: to,
       expires_at: data.expires_at ?? data.client_secret?.expires_at ?? null,
     }), { "Content-Type": MIME[".json"] });
   } catch (err) {
@@ -181,13 +145,10 @@ async function createSession(req, res, url) {
 }
 
 async function serveStatic(req, res, url) {
-  // Prevent path traversal; default to index.html.
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === "/") pathname = "/index.html";
   const filePath = normalize(join(PUBLIC_DIR, pathname));
-  if (!filePath.startsWith(PUBLIC_DIR)) {
-    return send(res, 403, "Forbidden");
-  }
+  if (!filePath.startsWith(PUBLIC_DIR)) return send(res, 403, "Forbidden");
   try {
     const data = await readFile(filePath);
     const type = MIME[extname(filePath)] || "application/octet-stream";
@@ -199,13 +160,8 @@ async function serveStatic(req, res, url) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-
-  if (url.pathname === "/api/session" && req.method === "POST") {
-    return createSession(req, res, url);
-  }
-  if (req.method === "GET") {
-    return serveStatic(req, res, url);
-  }
+  if (url.pathname === "/api/session" && req.method === "POST") return createSession(req, res, url);
+  if (req.method === "GET") return serveStatic(req, res, url);
   return send(res, 405, "Method not allowed");
 });
 
