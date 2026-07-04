@@ -1,0 +1,15 @@
+# One-click deploy config for Render (https://render.com).
+# Lets you run the interpreter on a public HTTPS URL you can open on your phone.
+# You'll be prompted to paste your OPENAI_API_KEY during setup (it is stored as a
+# secret on Render, never committed to the repo).
+services:
+  - type: web
+    name: live-interpreter
+    runtime: node
+    plan: free
+    branch: claude/live-interpretation-app-bl9fhn
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
