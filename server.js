@@ -89,7 +89,10 @@ async function createSession(req, res, url) {
       audio: {
         input: {
           transcription: { model: "gpt-realtime-whisper" },
-          noise_reduction: { type: "near_field" },
+          // "far_field" suits audio captured at a distance (e.g. another
+          // phone's speaker held near the laptop). "near_field" would treat
+          // that as background noise and filter it out.
+          noise_reduction: { type: "far_field" },
         },
         output: { language: to },
       },
