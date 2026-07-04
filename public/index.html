@@ -8,56 +8,69 @@
   :root {
     --bg: #0f1117; --panel: #171a23; --panel-2: #1e222d;
     --ink: #e8eaf0; --muted: #8b93a7; --line: #2a2f3d;
-    --accent: #4f8cff; --accent-ink: #fff; --live: #ff4d6d; --ok: #2fd07a;
+    --accent: #4f8cff; --accent-ink: #fff;
+    --live: #ff4d6d; --ok: #2fd07a;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    display: flex; flex-direction: column; min-height: 100vh; }
-  header { padding: 16px 18px 12px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  header h1 { font-size: 1.02rem; margin: 0; font-weight: 700; }
-  header .sub { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header {
+    padding: 16px 18px 12px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  header h1 { font-size: 1.02rem; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  header .sub { font-size: .74rem; color: var(--muted); margin-top: 2px; }
   .status { display: flex; align-items: center; gap: 7px; font-size: .76rem; color: var(--muted); }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.connecting { background: var(--accent); animation: pulse 1s infinite; }
   .dot.live { background: var(--live); animation: pulse 1s infinite; }
-  .dot.working { background: var(--accent); animation: pulse .6s infinite; }
   .dot.ready { background: var(--ok); }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
-  .direction { display: flex; align-items: stretch; margin: 16px 18px 0;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .direction {
+    display: flex; align-items: stretch; gap: 0; margin: 16px 18px 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  }
   .lang { flex: 1; text-align: center; padding: 12px 8px; }
   .lang .flag { font-size: 1.5rem; line-height: 1; }
   .lang .name { font-size: .82rem; margin-top: 4px; font-weight: 600; }
-  .lang .role { font-size: .62rem; text-transform: uppercase; letter-spacing: .8px; margin-top: 3px; font-weight: 700; color: var(--muted); }
-  .lang.input .role { color: var(--live); } .lang.output .role { color: var(--accent); }
-  .swap { flex: none; width: 56px; border: none; background: var(--panel-2); color: var(--ink);
-    font-size: 1.25rem; cursor: pointer; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .lang .role { font-size: .62rem; text-transform: uppercase; letter-spacing: .8px; margin-top: 3px; color: var(--muted); font-weight: 700; }
+  .lang.input .role { color: var(--live); }
+  .lang.output .role { color: var(--accent); }
+  .swap {
+    flex: none; width: 56px; border: none; background: var(--panel-2); color: var(--ink);
+    font-size: 1.25rem; cursor: pointer; border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+  }
   .swap:active { background: var(--accent); color: #fff; }
 
   main { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; overflow: hidden; }
   .track { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; }
-  .track.src { flex: 1; } .track.dst { flex: 1.15; border-color: #2f3a55; }
-  .track h2 { font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 8px; }
+  .track.src { flex: 1; }
+  .track.dst { flex: 1.15; border-color: #2f3a55; }
+  .track h2 { font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
   .track.dst h2 { color: var(--accent); }
-  .transcript { flex: 1; overflow-y: auto; font-size: 1.1rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-  .track.dst .transcript { font-size: 1.24rem; font-weight: 500; }
+  .transcript { flex: 1; overflow-y: auto; font-size: 1.12rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .track.dst .transcript { font-size: 1.28rem; font-weight: 500; }
   .transcript:empty::before { content: attr(data-placeholder); color: var(--muted); font-size: .95rem; font-weight: 400; }
-  .transcript .pending { color: var(--muted); font-style: italic; }
-  .transcript .errline { color: var(--live); font-weight: 600; }
-  .meter { height: 4px; background: var(--panel-2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
-  .meter > span { display: block; height: 100%; width: 0%; background: var(--live); transition: width .06s; }
 
   footer { padding: 14px 18px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
   .controls { display: flex; gap: 10px; }
-  .mic { flex: 1; padding: 16px; border: none; border-radius: 14px; font-size: 1.02rem; font-weight: 700;
-    background: var(--accent); color: var(--accent-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .mic {
+    flex: 1; padding: 16px; border: none; border-radius: 14px; font-size: 1.02rem; font-weight: 700;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: background .15s;
+  }
   .mic:disabled { opacity: .55; cursor: default; }
   .mic.recording { background: var(--live); }
-  .toggle { flex: none; width: 58px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); color: var(--ink); font-size: 1.3rem; cursor: pointer; }
+  .mic .ico { font-size: 1.2rem; }
+  .toggle {
+    flex: none; width: 58px; border: 1px solid var(--line); border-radius: 14px;
+    background: var(--panel-2); color: var(--ink); font-size: 1.3rem; cursor: pointer;
+  }
   .toggle.off { opacity: .55; }
   .hint { text-align: center; font-size: .72rem; color: var(--muted); margin-top: 10px; }
   .error { color: var(--live); }
@@ -68,233 +81,189 @@
   <header>
     <div>
       <h1>Live Interpreter</h1>
-      <div class="sub">Whisper → GPT-5 → speech · sentence-by-sentence</div>
+      <div class="sub">English ⇄ Vietnamese · gpt-realtime-translate</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
   </header>
 
   <div class="direction" id="direction">
     <div class="lang input" id="langFrom">
-      <div class="flag" id="fromFlag">🇻🇳</div><div class="name" id="fromName">Vietnamese</div><div class="role">Speaking</div>
+      <div class="flag" id="fromFlag">🇻🇳</div>
+      <div class="name" id="fromName">Vietnamese</div>
+      <div class="role">Speaking</div>
     </div>
     <button class="swap" id="swap" title="Swap direction">⇄</button>
     <div class="lang output" id="langTo">
-      <div class="flag" id="toFlag">🇬🇧</div><div class="name" id="toName">English</div><div class="role">Translation</div>
+      <div class="flag" id="toFlag">🇬🇧</div>
+      <div class="name" id="toName">English</div>
+      <div class="role">Translation</div>
     </div>
   </div>
 
   <main>
     <section class="track src">
       <h2>🎙️ <span id="srcLabel">You said</span></h2>
-      <div class="transcript" id="srcText" data-placeholder="Speak a sentence, then pause — it translates each one…"></div>
-      <div class="meter"><span id="meterBar"></span></div>
+      <div class="transcript" id="srcText" data-placeholder="What the speaker says appears here…"></div>
     </section>
     <section class="track dst">
       <h2>🔊 <span id="dstLabel">Translation</span></h2>
-      <div class="transcript" id="dstText" data-placeholder="The translation appears here and is spoken aloud…"></div>
+      <div class="transcript" id="dstText" data-placeholder="The translation appears here (and is spoken aloud)…"></div>
     </section>
   </main>
 
   <footer>
     <div class="controls">
-      <button class="mic" id="mic">🎙️ <span id="micText">Start</span></button>
+      <button class="mic" id="mic"><span class="ico">🎙️</span><span id="micText">Start interpreting</span></button>
       <button class="toggle" id="audioToggle" title="Voice on/off">🔊</button>
     </div>
-    <div class="hint" id="hint">Tap Start, allow the mic, and speak one sentence at a time.</div>
+    <div class="hint" id="hint">Set the direction above, then tap to start.</div>
   </footer>
 
-  <audio id="player"></audio>
+  <audio id="remoteAudio" autoplay></audio>
 
 <script>
 (() => {
-  const LANGS = { en: { flag: "🇬🇧", name: "English" }, vi: { flag: "🇻🇳", name: "Vietnamese" } };
+  const LANGS = {
+    en: { flag: "🇬🇧", name: "English" },
+    vi: { flag: "🇻🇳", name: "Vietnamese" },
+  };
+
   const $ = (id) => document.getElementById(id);
-  const dot = $("dot"), statusText = $("statusText"), hint = $("hint");
-  const micBtn = $("mic"), micText = $("micText"), audioToggle = $("audioToggle");
-  const srcText = $("srcText"), dstText = $("dstText"), meterBar = $("meterBar"), player = $("player");
+  const dot = $("dot"), statusText = $("statusText");
+  const micBtn = $("mic"), micText = $("micText"), hint = $("hint");
+  const srcText = $("srcText"), dstText = $("dstText");
+  const remoteAudio = $("remoteAudio"), audioToggle = $("audioToggle");
 
-  // Tuning knobs for pause detection.
-  const START_THRESH = 0.020;   // volume (0..1) that counts as speech
-  const SILENCE_MS = 750;       // silence after speech that ends a sentence
-  const MIN_UTT_MS = 350;       // ignore blips shorter than this
-
+  // Direction chosen by the toggle. Default: Vietnamese in → English out.
   let from = "vi", to = "en";
-  let listening = false, playAudio = true;
-  let micStream = null, audioCtx = null, analyser = null, vadTimer = null, buf = null;
-  let recorder = null, chunks = [], speaking = false, lastVoice = 0, uttStart = 0;
-  let inFlight = 0;
-  const audioQueue = []; let playing = false;
+  let running = false;
+  let playAudio = true;
+  let pc = null, dc = null, micStream = null;
+  let srcBuf = "", dstBuf = "";
+  let srcSegHasDelta = false;
 
-  const setStatus = (s, t) => { dot.className = "dot" + (s ? " " + s : ""); statusText.textContent = t; };
+  const setStatus = (state, text) => { dot.className = "dot" + (state ? " " + state : ""); statusText.textContent = text; };
 
   function renderDirection() {
     $("fromFlag").textContent = LANGS[from].flag; $("fromName").textContent = LANGS[from].name;
-    $("toFlag").textContent = LANGS[to].flag; $("toName").textContent = LANGS[to].name;
+    $("toFlag").textContent = LANGS[to].flag;     $("toName").textContent = LANGS[to].name;
     $("srcLabel").textContent = "You said (" + LANGS[from].name + ")";
     $("dstLabel").textContent = "Translation (" + LANGS[to].name + ")";
   }
 
-  $("swap").addEventListener("click", () => { [from, to] = [to, from]; renderDirection(); });
-  audioToggle.addEventListener("click", () => {
-    playAudio = !playAudio; player.muted = !playAudio;
-    audioToggle.textContent = playAudio ? "🔊" : "🔇"; audioToggle.classList.toggle("off", !playAudio);
-  });
-  micBtn.addEventListener("click", () => (listening ? stop() : start()));
-
-  function pickMime() {
-    for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
-      if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  $("swap").addEventListener("click", async () => {
+    [from, to] = [to, from];
+    renderDirection();
+    if (running) {
+      // Reconnect with the new direction (deliberate, occasional action).
+      setStatus("connecting", "Switching…");
+      await stop(true);
+      await start();
     }
-    return "";
-  }
+  });
+
+  audioToggle.addEventListener("click", () => {
+    playAudio = !playAudio;
+    remoteAudio.muted = !playAudio;
+    audioToggle.textContent = playAudio ? "🔊" : "🔇";
+    audioToggle.classList.toggle("off", !playAudio);
+    audioToggle.title = playAudio ? "Voice on — tap for transcript only" : "Transcript only — tap for voice";
+  });
+
+  micBtn.addEventListener("click", () => (running ? stop() : start()));
 
   async function start() {
     try {
-      setStatus("connecting", "Starting…"); micBtn.disabled = true;
+      srcBuf = ""; dstBuf = ""; srcText.textContent = ""; dstText.textContent = "";
+      srcSegHasDelta = false;
+      setStatus("connecting", "Connecting…");
+      micBtn.disabled = true; micText.textContent = "Connecting…";
       hint.classList.remove("error");
+
+      // 1. Client secret from our server. `to` = the language to translate INTO.
+      const res = await fetch("/api/session?to=" + to, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Session request failed");
+      const clientSecret = data.client_secret;
+
+      // 2. WebRTC peer connection.
+      pc = new RTCPeerConnection();
+      pc.ontrack = ({ streams }) => { remoteAudio.srcObject = streams[0]; remoteAudio.muted = !playAudio; };
+
+      dc = pc.createDataChannel("oai-events");
+      dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handleEvent(m); };
+
+      // 3. Mic. Clean settings (suppression + echo cancel ON) reduce noise and
+      // stop the translated audio from looping back in — use headphones too.
       micStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const src = audioCtx.createMediaStreamSource(micStream);
-      analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
-      buf = new Uint8Array(analyser.fftSize);
-      src.connect(analyser);
+      micStream.getAudioTracks().forEach((t) => pc.addTrack(t, micStream));
 
-      listening = true; speaking = false;
-      micBtn.disabled = false; micBtn.classList.add("recording"); micText.textContent = "Stop";
-      setStatus("live", "Listening");
-      hint.textContent = "Speak a sentence in " + LANGS[from].name + ", then pause.";
-      vadTimer = setInterval(vadTick, 40);
-    } catch (err) {
-      console.error(err);
-      hint.textContent = "Error: " + err.message; hint.classList.add("error");
-      setStatus("", "Error"); micBtn.disabled = false; micText.textContent = "Start";
-    }
-  }
-
-  function stop() {
-    listening = false; speaking = false;
-    clearInterval(vadTimer); vadTimer = null;
-    if (recorder && recorder.state !== "inactive") { recorder.onstop = null; try { recorder.stop(); } catch {} }
-    recorder = null;
-    if (micStream) micStream.getTracks().forEach((t) => t.stop());
-    if (audioCtx) { try { audioCtx.close(); } catch {} }
-    micStream = null; audioCtx = null; analyser = null;
-    micBtn.classList.remove("recording"); micText.textContent = "Start";
-    meterBar.style.width = "0%";
-    setStatus("ready", "Ready");
-    if (!hint.classList.contains("error")) hint.textContent = "Stopped.";
-  }
-
-  function vadTick() {
-    if (!listening || !analyser) return;
-    analyser.getByteTimeDomainData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-    const rms = Math.sqrt(sum / buf.length);
-    meterBar.style.width = Math.min(100, rms * 400) + "%";
-    const now = performance.now();
-
-    if (rms > START_THRESH) {
-      if (!speaking) { speaking = true; uttStart = now; startUtterance(); }
-      lastVoice = now;
-    } else if (speaking && now - lastVoice > SILENCE_MS) {
-      speaking = false;
-      const dur = now - uttStart;
-      if (dur > MIN_UTT_MS) endUtterance();       // finalize + send
-      else discardUtterance();                     // too short: drop
-    }
-  }
-
-  function startUtterance() {
-    chunks = [];
-    const mime = pickMime();
-    try { recorder = new MediaRecorder(micStream, mime ? { mimeType: mime } : undefined); }
-    catch { recorder = new MediaRecorder(micStream); }
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-    recorder.onstop = () => {
-      const type = (chunks[0] && chunks[0].type) || "audio/webm";
-      const blob = new Blob(chunks, { type });
-      if (blob.size > 1200) sendUtterance(blob);
-    };
-    recorder.start();
-  }
-  function endUtterance() { if (recorder && recorder.state !== "inactive") recorder.stop(); recorder = null; }
-  function discardUtterance() {
-    if (recorder && recorder.state !== "inactive") { recorder.onstop = null; try { recorder.stop(); } catch {} }
-    recorder = null;
-  }
-
-  async function sendUtterance(blob) {
-    inFlight++;
-    setStatus("working", "Translating…");
-    const pendingId = "p" + Date.now() + Math.round(performance.now());
-    appendPending(srcText, pendingId, "…");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60000);
-    try {
-      const res = await fetch("/api/interpret?from=" + from + "&to=" + to, {
+      // 4. SDP handshake with OpenAI.
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/translations/calls", {
         method: "POST",
-        headers: { "Content-Type": blob.type || "audio/webm" },
-        body: blob,
-        signal: controller.signal,
+        headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/sdp" },
+        body: offer.sdp,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || ("pipeline failed (" + res.status + ")"));
-      if (data.skip) { removePending(pendingId); return; }
-      replacePending(srcText, pendingId, data.source || "(…)");
-      if (data.translation) appendLine(dstText, data.translation);
-      if (data.audio) enqueueAudio(data.audio);
+      if (!sdpRes.ok) throw new Error("OpenAI handshake failed (" + sdpRes.status + ")");
+      await pc.setRemoteDescription({ type: "answer", sdp: await sdpRes.text() });
+
+      running = true;
+      micBtn.disabled = false;
+      micBtn.classList.add("recording");
+      micText.textContent = "Stop";
+      hint.textContent = "Listening… speak " + LANGS[from].name + ".";
+      setStatus("live", LANGS[from].name + " → " + LANGS[to].name);
     } catch (err) {
       console.error(err);
-      const short = err.name === "AbortError"
-        ? "Timed out (server may be waking up — try again)"
-        : err.message;
-      failPending(srcText, pendingId, "⚠ " + short);
-      hint.textContent = "Error: " + short; hint.classList.add("error");
-    } finally {
-      clearTimeout(timer);
-      inFlight--;
-      if (inFlight === 0 && listening) setStatus("live", "Listening");
+      hint.textContent = "Error: " + err.message;
+      hint.classList.add("error");
+      dstText.textContent = "⚠ " + err.message;   // show it big, not just in the footer
+      setStatus("", "Error");
+      micBtn.disabled = false; micText.textContent = "Start interpreting";
+      await stop(true);
     }
   }
 
-  // --- transcript helpers ---
-  function appendLine(el, text) {
-    el.textContent += (el.textContent ? "\n" : "") + text;
-    el.scrollTop = el.scrollHeight;
-  }
-  function appendPending(el, id, text) {
-    const span = document.createElement("span");
-    span.className = "pending"; span.dataset.pid = id;
-    span.textContent = (el.childNodes.length ? "\n" : "") + text;
-    el.appendChild(span); el.scrollTop = el.scrollHeight;
-  }
-  function findPending(id) { return document.querySelector('[data-pid="' + id + '"]'); }
-  function replacePending(el, id, text) {
-    const span = findPending(id); if (!span) return;
-    if (!text) { span.remove(); return; }
-    span.className = ""; span.textContent = (el.firstChild === span ? "" : "\n") + text;
-    el.scrollTop = el.scrollHeight;
-  }
-  function removePending(id) { const s = findPending(id); if (s) s.remove(); }
-  function failPending(el, id, text) {
-    const span = findPending(id); if (!span) return;
-    span.className = "errline";
-    span.textContent = (el.firstChild === span ? "" : "\n") + text;
-    el.scrollTop = el.scrollHeight;
+  // quiet=true when reconnecting (don't overwrite status/hint).
+  async function stop(quiet) {
+    running = false;
+    micBtn.classList.remove("recording");
+    if (!quiet) {
+      micText.textContent = "Start interpreting";
+      if (!hint.classList.contains("error")) hint.textContent = "Stopped.";
+      setStatus("ready", "Ready");
+    }
+    try { dc && dc.close(); } catch {}
+    try { pc && pc.close(); } catch {}
+    if (micStream) micStream.getTracks().forEach((t) => t.stop());
+    dc = null; pc = null; micStream = null;
   }
 
-  // --- audio playback queue (keeps translations from overlapping) ---
-  function enqueueAudio(b64) { audioQueue.push(b64); if (!playing) playNext(); }
-  function playNext() {
-    if (!audioQueue.length) { playing = false; return; }
-    playing = true;
-    player.src = "data:audio/mp3;base64," + audioQueue.shift();
-    player.muted = !playAudio;
-    player.onended = playNext;
-    player.play().catch(() => playNext());
+  function handleEvent(msg) {
+    const t = msg.type || "";
+    if (t === "session.input_transcript.delta") {
+      srcSegHasDelta = true;
+      srcBuf += msg.delta || "";
+      srcText.textContent = srcBuf;
+      srcText.scrollTop = srcText.scrollHeight;
+    } else if (t === "session.input_transcript.done") {
+      if (!srcSegHasDelta && msg.transcript) { srcBuf += msg.transcript; srcText.textContent = srcBuf; }
+      srcBuf += "\n"; srcSegHasDelta = false;
+    } else if (t === "session.output_transcript.delta") {
+      dstBuf += msg.delta || "";
+      dstText.textContent = dstBuf;
+      dstText.scrollTop = dstText.scrollHeight;
+    } else if (t === "session.output_transcript.done") {
+      dstBuf += "\n";
+    } else if (t === "error") {
+      console.error("Realtime error:", msg);
+      hint.textContent = "Error: " + (msg.error?.message || "realtime error");
+      hint.classList.add("error");
+    }
   }
 
   renderDirection();
