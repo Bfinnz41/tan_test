@@ -37,6 +37,11 @@
     font-size: 1.25rem; cursor: pointer; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
   .swap:active { background: var(--accent); color: #fff; }
 
+  .modechip { display: block; margin: 10px 18px 0; padding: 9px; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--panel-2); color: var(--muted); font-size: .8rem; font-weight: 600;
+    cursor: pointer; text-align: center; width: auto; }
+  .modechip.on { background: rgba(79,140,255,.16); border-color: var(--accent); color: var(--accent); }
+
   main { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; overflow: hidden; }
   .track { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; }
   .track.src { flex: 1; } .track.dst { flex: 1.15; border-color: #2f3a55; }
@@ -80,6 +85,8 @@
     </div>
   </div>
 
+  <button class="modechip" id="phoneMode">📞 Phone-call mode: Off</button>
+
   <main>
     <section class="track src">
       <h2>🎙️ <span id="srcLabel">You said</span></h2>
@@ -111,7 +118,7 @@
   const srcText = $("srcText"), dstText = $("dstText"), meterBar = $("meterBar");
 
   let from = "vi", to = "en";
-  let running = false, playAudio = true;
+  let running = false, playAudio = true, phoneMode = false;
   let ws = null, micStream = null;
   let inCtx = null, proc = null, silentGain = null;
   let outCtx = null, outGain = null, nextStart = 0;
@@ -135,6 +142,29 @@
     if (outGain) outGain.gain.value = playAudio ? 1 : 0;
     audioToggle.textContent = playAudio ? "🔊" : "🔇"; audioToggle.classList.toggle("off", !playAudio);
   });
+
+  const phoneBtn = $("phoneMode");
+  function updatePhoneBtn() {
+    phoneBtn.textContent = "📞 Phone-call mode: " + (phoneMode ? "On" : "Off");
+    phoneBtn.classList.toggle("on", phoneMode);
+  }
+  phoneBtn.addEventListener("click", async () => {
+    phoneMode = !phoneMode; updatePhoneBtn();
+    hint.textContent = phoneMode
+      ? "Phone-call mode: point the other phone's speaker at this mic. Tip: use 🔇 and read."
+      : "Direct mode: speak into this phone.";
+    hint.classList.remove("error");
+    if (running) { setStatus("connecting", "Switching…"); await stop(true); await start(); }
+  });
+
+  // Mic settings: normal = clean for speaking directly; phone mode = capture a
+  // nearby phone's speaker (suppression off so the relayed audio isn't filtered).
+  function micConstraints() {
+    return phoneMode
+      ? { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+      : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  }
+
   micBtn.addEventListener("click", () => (running ? stop() : start()));
 
   function showError(msg) {
@@ -199,9 +229,7 @@
       ws.onclose = (e) => { if (running && !e.wasClean) showError("connection closed (" + (e.code || "?") + ")"); };
 
       // 4. Mic capture -> 16kHz PCM16 -> WebSocket.
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
       const srcNode = inCtx.createMediaStreamSource(micStream);
       proc = inCtx.createScriptProcessor(4096, 1, 1);
       proc.onaudioprocess = (e) => {
