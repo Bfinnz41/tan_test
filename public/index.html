@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Live Interpreter · English ⇄ Vietnamese</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel-2: #1e222d;
+    --ink: #e8eaf0; --muted: #8b93a7; --line: #2a2f3d;
+    --accent: #4f8cff; --accent-ink: #fff;
+    --live: #ff4d6d; --ok: #2fd07a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header {
+    padding: 16px 18px 12px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  header h1 { font-size: 1.02rem; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  header .sub { font-size: .74rem; color: var(--muted); margin-top: 2px; }
+  .status { display: flex; align-items: center; gap: 7px; font-size: .76rem; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.connecting { background: var(--accent); animation: pulse 1s infinite; }
+  .dot.live { background: var(--live); animation: pulse 1s infinite; }
+  .dot.ready { background: var(--ok); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .direction {
+    display: flex; align-items: stretch; gap: 0; margin: 16px 18px 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  }
+  .lang { flex: 1; text-align: center; padding: 14px 8px; }
+  .lang .flag { font-size: 1.5rem; line-height: 1; }
+  .lang .name { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+  .lang .role { font-size: .64rem; text-transform: uppercase; letter-spacing: .8px; margin-top: 3px; color: var(--accent); font-weight: 700; }
+  .swap {
+    flex: none; width: 54px; border: none; background: var(--panel-2); color: var(--ink);
+    font-size: 1.2rem; cursor: pointer; border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+  }
+  .swap:active { background: var(--accent); }
+
+  main { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; overflow: hidden; }
+  .track { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; }
+  .track.src { flex: 1; }
+  .track.dst { flex: 1.15; border-color: #2f3a55; }
+  .track h2 { font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+  .track.dst h2 { color: var(--accent); }
+  .transcript { flex: 1; overflow-y: auto; font-size: 1.12rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .track.dst .transcript { font-size: 1.28rem; font-weight: 500; }
+  .transcript:empty::before { content: attr(data-placeholder); color: var(--muted); font-size: .95rem; font-weight: 400; }
+  .interim { color: var(--muted); }
+
+  footer { padding: 14px 18px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+  .mic {
+    width: 100%; padding: 16px; border: none; border-radius: 14px; font-size: 1.02rem; font-weight: 700;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: background .15s;
+  }
+  .mic:disabled { opacity: .55; cursor: default; }
+  .mic.recording { background: var(--live); }
+  .mic .ico { font-size: 1.2rem; }
+  .hint { text-align: center; font-size: .72rem; color: var(--muted); margin-top: 10px; }
+  .error { color: var(--live); }
+  audio { display: none; }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Live Interpreter</h1>
+      <div class="sub">English ⇄ Vietnamese · gpt-realtime-translate</div>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
+  </header>
+
+  <div class="direction" id="direction">
+    <div class="lang" id="langFrom">
+      <div class="flag">🇬🇧</div>
+      <div class="name">English</div>
+      <div class="role">Speak</div>
+    </div>
+    <button class="swap" id="swap" title="Swap direction">⇄</button>
+    <div class="lang" id="langTo">
+      <div class="flag">🇻🇳</div>
+      <div class="name">Vietnamese</div>
+      <div class="role">Hear</div>
+    </div>
+  </div>
+
+  <main>
+    <section class="track src">
+      <h2><span id="srcLabel">You said</span></h2>
+      <div class="transcript" id="srcText" data-placeholder="Your speech appears here…"></div>
+    </section>
+    <section class="track dst">
+      <h2>🔊 <span id="dstLabel">Translation</span></h2>
+      <div class="transcript" id="dstText" data-placeholder="The translation is spoken aloud and shown here…"></div>
+    </section>
+  </main>
+
+  <footer>
+    <button class="mic" id="mic"><span class="ico">🎙️</span><span id="micText">Start interpreting</span></button>
+    <div class="hint" id="hint">Tap to grant microphone access. Everything is streamed live.</div>
+  </footer>
+
+  <audio id="remoteAudio" autoplay></audio>
+
+<script>
+(() => {
+  // direction.output = language the LISTENER hears (what we translate INTO)
+  const LANGS = {
+    en: { flag: "🇬🇧", name: "English" },
+    vi: { flag: "🇻🇳", name: "Vietnamese" },
+  };
+  // Start: speak English -> hear Vietnamese
+  let from = "en", to = "vi";
+  let running = false;
+  let pc = null, dc = null, micStream = null;
+  let srcBuf = "", dstBuf = "";
+
+  const $ = (id) => document.getElementById(id);
+  const dot = $("dot"), statusText = $("statusText");
+  const micBtn = $("mic"), micText = $("micText"), hint = $("hint");
+  const srcText = $("srcText"), dstText = $("dstText");
+
+  function setStatus(state, text) {
+    dot.className = "dot" + (state ? " " + state : "");
+    statusText.textContent = text;
+  }
+
+  function renderDirection() {
+    $("langFrom").querySelector(".flag").textContent = LANGS[from].flag;
+    $("langFrom").querySelector(".name").textContent = LANGS[from].name;
+    $("langTo").querySelector(".flag").textContent = LANGS[to].flag;
+    $("langTo").querySelector(".name").textContent = LANGS[to].name;
+    $("srcLabel").textContent = "You said (" + LANGS[from].name + ")";
+    $("dstLabel").textContent = "Translation (" + LANGS[to].name + ")";
+  }
+
+  $("swap").addEventListener("click", async () => {
+    [from, to] = [to, from];
+    renderDirection();
+    if (running) { await stop(); await start(); } // re-open session with new output language
+  });
+
+  micBtn.addEventListener("click", () => (running ? stop() : start()));
+
+  async function start() {
+    try {
+      srcBuf = ""; dstBuf = ""; srcText.textContent = ""; dstText.textContent = "";
+      setStatus("connecting", "Connecting…");
+      micBtn.disabled = true; micText.textContent = "Connecting…";
+
+      // 1. Get a short-lived client secret from OUR server (real key stays server-side).
+      const sessRes = await fetch("/api/session?to=" + to, { method: "POST" });
+      const sess = await sessRes.json();
+      if (!sessRes.ok) throw new Error(sess.error || "Session request failed");
+      const clientSecret = sess.client_secret;
+
+      // 2. Set up the WebRTC peer connection.
+      pc = new RTCPeerConnection();
+
+      // Translated speech comes back as a remote audio track.
+      pc.ontrack = ({ streams }) => { $("remoteAudio").srcObject = streams[0]; };
+
+      // Data channel carries transcript events.
+      dc = pc.createDataChannel("oai-events");
+      dc.onmessage = onEvent;
+
+      // 3. Capture the mic and send it as the source track.
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      micStream.getAudioTracks().forEach((t) => pc.addTrack(t, micStream));
+
+      // 4. Offer / answer SDP handshake with OpenAI, authorized by the client secret.
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/translations/calls", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/sdp" },
+        body: offer.sdp,
+      });
+      if (!sdpRes.ok) throw new Error("OpenAI handshake failed (" + sdpRes.status + ")");
+      const answer = { type: "answer", sdp: await sdpRes.text() };
+      await pc.setRemoteDescription(answer);
+
+      running = true;
+      micBtn.disabled = false;
+      micBtn.classList.add("recording");
+      micText.textContent = "Stop";
+      hint.textContent = "Listening… speak " + LANGS[from].name + ".";
+      hint.classList.remove("error");
+      setStatus("live", "Live");
+    } catch (err) {
+      console.error(err);
+      hint.textContent = "Error: " + err.message;
+      hint.classList.add("error");
+      setStatus("", "Error");
+      micBtn.disabled = false;
+      micText.textContent = "Start interpreting";
+      await stop();
+    }
+  }
+
+  async function stop() {
+    running = false;
+    micBtn.classList.remove("recording");
+    micText.textContent = "Start interpreting";
+    if (!hint.classList.contains("error")) hint.textContent = "Stopped.";
+    setStatus("ready", "Ready");
+    try { dc && dc.close(); } catch {}
+    try { pc && pc.close(); } catch {}
+    if (micStream) micStream.getTracks().forEach((t) => t.stop());
+    dc = null; pc = null; micStream = null;
+  }
+
+  // Handle streaming transcript events from the data channel.
+  function onEvent(e) {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    switch (msg.type) {
+      case "session.input_transcript.delta":
+        srcBuf += msg.delta || "";
+        srcText.textContent = srcBuf;
+        srcText.scrollTop = srcText.scrollHeight;
+        break;
+      case "session.input_transcript.done":
+        if (msg.transcript) { srcBuf = msg.transcript; srcText.textContent = srcBuf; }
+        srcBuf += "\n";
+        break;
+      case "session.output_transcript.delta":
+        dstBuf += msg.delta || "";
+        dstText.textContent = dstBuf;
+        dstText.scrollTop = dstText.scrollHeight;
+        break;
+      case "session.output_transcript.done":
+        if (msg.transcript) { dstBuf = msg.transcript; dstText.textContent = dstBuf; }
+        dstBuf += "\n";
+        break;
+      case "error":
+        console.error("Realtime error:", msg);
+        hint.textContent = "Error: " + (msg.error?.message || "realtime error");
+        hint.classList.add("error");
+        break;
+      default:
+        // Uncomment for debugging other event types:
+        // console.debug("event", msg.type, msg);
+        break;
+    }
+  }
+
+  renderDirection();
+  setStatus("ready", "Ready");
+})();
+</script>
+</body>
+</html>
