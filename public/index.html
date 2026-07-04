@@ -112,16 +112,6 @@
   const LANGS = { en: { flag: "🇬🇧", name: "English" }, vi: { flag: "🇻🇳", name: "Vietnamese" } };
   const WS_BASE = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained";
 
-  // Experimental steering — the dedicated translate model may or may not honor this.
-  const SYS_INSTRUCTION =
-    "You are interpreting a family conversation between English and Vietnamese. " +
-    "For Vietnamese, use the NORTHERN Vietnamese dialect and vocabulary. " +
-    "Always choose precise kinship and in-law terms that match the exact family relationship in context — " +
-    "e.g. con rể = son-in-law, con dâu = daughter-in-law, bố vợ/mẹ vợ = wife's father/mother, " +
-    "bố chồng/mẹ chồng = husband's father/mother, anh rể, em rể, chị dâu, em dâu. " +
-    "When translating into English, use the exact English in-law terms (son-in-law, mother-in-law, " +
-    "brother-in-law, etc.), never a vague word like 'relative'.";
-
   const $ = (id) => document.getElementById(id);
   const dot = $("dot"), statusText = $("statusText"), hint = $("hint");
   const micBtn = $("mic"), micText = $("micText"), audioToggle = $("audioToggle");
@@ -229,7 +219,6 @@
               responseModalities: ["AUDIO"],
               translationConfig: { targetLanguageCode: to, echoTargetLanguage: false },
             },
-            systemInstruction: { parts: [{ text: SYS_INSTRUCTION }] },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
           },
