@@ -55,7 +55,6 @@
   .transcript { flex: 1; overflow-y: auto; font-size: 1.12rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
   .track.dst .transcript { font-size: 1.28rem; font-weight: 500; }
   .transcript:empty::before { content: attr(data-placeholder); color: var(--muted); font-size: .95rem; font-weight: 400; }
-  .interim { color: var(--muted); }
 
   footer { padding: 14px 18px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
   .controls { display: flex; gap: 10px; }
@@ -81,7 +80,7 @@
   <header>
     <div>
       <h1>Live Interpreter</h1>
-      <div class="sub">English ⇄ Vietnamese · auto-detect</div>
+      <div class="sub">English ⇄ Vietnamese · gpt-realtime-2</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
   </header>
@@ -118,9 +117,7 @@
     <div class="hint" id="hint">Tap to grant microphone access. Speak either language.</div>
   </footer>
 
-  <!-- One audio element per direction; we unmute only the one that matches what was spoken. -->
-  <audio id="audioVI" autoplay></audio>
-  <audio id="audioEN" autoplay></audio>
+  <audio id="remoteAudio" autoplay></audio>
 
 <script>
 (() => {
@@ -128,30 +125,23 @@
     en: { flag: "🇬🇧", name: "English" },
     vi: { flag: "🇻🇳", name: "Vietnamese" },
   };
-  // Vietnamese-specific letters/diacritics — their presence => Vietnamese was spoken.
-  const VI_CHARS = /[ăâđêôơưĂÂĐÊÔƠƯàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụ​ừứửữựỳýỷỹỵ]/;
+  // Vietnamese-specific letters/diacritics — presence => Vietnamese was spoken.
+  const VI_CHARS = /[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i;
   const detectLang = (t) => (VI_CHARS.test(t) ? "vi" : "en");
 
   const $ = (id) => document.getElementById(id);
   const dot = $("dot"), statusText = $("statusText");
   const micBtn = $("mic"), micText = $("micText"), hint = $("hint");
   const srcText = $("srcText"), dstText = $("dstText");
-  const audioVI = $("audioVI"), audioEN = $("audioEN");
-  const audioToggle = $("audioToggle");
+  const remoteAudio = $("remoteAudio"), audioToggle = $("audioToggle");
 
   let running = false;
   let playAudio = true;
-  let sessions = [];        // [{pc, dc, to}]
-  let micStream = null;
-  let activeOut = "vi";     // which session's output we currently play/show ("vi" or "en")
+  let pc = null, dc = null, micStream = null;
   let srcBuf = "", dstBuf = "";
+  let srcSegHasDelta = false;
 
-  function setStatus(state, text) { dot.className = "dot" + (state ? " " + state : ""); statusText.textContent = text; }
-
-  function applyMute() {
-    audioVI.muted = !(running && playAudio && activeOut === "vi");
-    audioEN.muted = !(running && playAudio && activeOut === "en");
-  }
+  const setStatus = (state, text) => { dot.className = "dot" + (state ? " " + state : ""); statusText.textContent = text; };
 
   function updateDetectedUI(spoken) {
     const to = spoken === "en" ? "vi" : "en";
@@ -164,7 +154,6 @@
     $("srcLabel").textContent = "You said (" + LANGS[spoken].name + ")";
     $("dstLabel").textContent = "Translation (" + LANGS[to].name + ")";
   }
-
   function resetDetectedUI() {
     $("fromFlag").textContent = "🎧"; $("fromName").textContent = "Listening…";
     $("toFlag").textContent = "🌐"; $("toName").textContent = "translation";
@@ -174,70 +163,62 @@
 
   audioToggle.addEventListener("click", () => {
     playAudio = !playAudio;
+    remoteAudio.muted = !playAudio;
     audioToggle.textContent = playAudio ? "🔊" : "🔇";
     audioToggle.classList.toggle("off", !playAudio);
     audioToggle.title = playAudio ? "Voice on — tap for transcript only" : "Transcript only — tap for voice";
-    applyMute();
   });
 
   micBtn.addEventListener("click", () => (running ? stop() : start()));
 
-  // Open ONE translation session with a fixed output language.
-  async function openSession(to, stream) {
-    const res = await fetch("/api/session?to=" + to, { method: "POST" });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Session request failed");
-
-    const pc = new RTCPeerConnection();
-    const audioEl = to === "vi" ? audioVI : audioEN;
-    pc.ontrack = ({ streams }) => { audioEl.srcObject = streams[0]; applyMute(); };
-
-    const dc = pc.createDataChannel("oai-events");
-    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handleEvent(to, m); };
-
-    stream.getAudioTracks().forEach((t) => pc.addTrack(t, stream));
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    const sdp = await fetch("https://api.openai.com/v1/realtime/translations/calls", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + data.client_secret, "Content-Type": "application/sdp" },
-      body: offer.sdp,
-    });
-    if (!sdp.ok) throw new Error("OpenAI handshake failed (" + sdp.status + ")");
-    await pc.setRemoteDescription({ type: "answer", sdp: await sdp.text() });
-    return { pc, dc, to };
-  }
-
   async function start() {
     try {
       srcBuf = ""; dstBuf = ""; srcText.textContent = ""; dstText.textContent = "";
+      srcSegHasDelta = false;
       resetDetectedUI();
       setStatus("connecting", "Connecting…");
       micBtn.disabled = true; micText.textContent = "Connecting…";
       hint.classList.remove("error");
 
-      // noiseSuppression OFF: it treats a phone speaker held near the laptop
-      // as "noise" and mutes it. autoGainControl ON helps amplify quiet/distant
-      // audio. echoCancellation ON prevents the translated output from looping
-      // back into the mic (use headphones for best results).
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: false,
-          autoGainControl: true,
-        },
-      });
+      // 1. Short-lived client secret from our server (real key stays server-side).
+      const res = await fetch("/api/session", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Session request failed");
+      const clientSecret = data.client_secret;
+      const model = data.model || "gpt-realtime-2";
 
-      // Two sessions: one that outputs Vietnamese (for English speech),
-      // one that outputs English (for Vietnamese speech). Same mic feeds both.
-      sessions = await Promise.all([
-        openSession("vi", micStream),
-        openSession("en", micStream),
-      ]);
+      // 2. WebRTC peer connection.
+      pc = new RTCPeerConnection();
+      pc.ontrack = ({ streams }) => { remoteAudio.srcObject = streams[0]; remoteAudio.muted = !playAudio; };
+
+      dc = pc.createDataChannel("oai-events");
+      dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handleEvent(m); };
+      dc.onopen = () => {
+        // Reinforce input transcription so we always get the "You said" text.
+        dc.send(JSON.stringify({
+          type: "session.update",
+          session: { type: "realtime", audio: { input: { transcription: { model: "gpt-realtime-whisper" } } } },
+        }));
+      };
+
+      // 3. Mic. noiseSuppression off so a phone speaker held nearby isn't filtered out.
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true },
+      });
+      micStream.getAudioTracks().forEach((t) => pc.addTrack(t, micStream));
+
+      // 4. SDP handshake with OpenAI, authorized by the client secret.
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls?model=" + encodeURIComponent(model), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/sdp" },
+        body: offer.sdp,
+      });
+      if (!sdpRes.ok) throw new Error("OpenAI handshake failed (" + sdpRes.status + ")");
+      await pc.setRemoteDescription({ type: "answer", sdp: await sdpRes.text() });
 
       running = true;
-      applyMute();
       micBtn.disabled = false;
       micBtn.classList.add("recording");
       micText.textContent = "Stop";
@@ -259,49 +240,40 @@
     micText.textContent = "Start interpreting";
     if (!hint.classList.contains("error")) hint.textContent = "Stopped.";
     setStatus("ready", "Ready");
-    for (const s of sessions) { try { s.dc.close(); } catch {} try { s.pc.close(); } catch {} }
-    sessions = [];
+    try { dc && dc.close(); } catch {}
+    try { pc && pc.close(); } catch {}
     if (micStream) micStream.getTracks().forEach((t) => t.stop());
-    micStream = null;
-    applyMute();
+    dc = null; pc = null; micStream = null;
   }
 
-  // Only the "vi" session drives the source transcript + language detection
-  // (both sessions transcribe the same audio, so we pick one to avoid doubles).
-  function handleEvent(to, msg) {
-    switch (msg.type) {
-      case "session.input_transcript.delta":
-        if (to !== "vi") break;
-        srcBuf += msg.delta || "";
-        srcText.textContent = srcBuf;
-        srcText.scrollTop = srcText.scrollHeight;
-        {
-          const spoken = detectLang(srcBuf);
-          activeOut = spoken === "en" ? "vi" : "en";
-          updateDetectedUI(spoken);
-          applyMute();
-        }
-        break;
-      case "session.input_transcript.done":
-        if (to !== "vi") break;
-        srcBuf += "\n";
-        break;
-      case "session.output_transcript.delta":
-        if (to !== activeOut) break; // ignore the "echo" session going the wrong way
-        dstBuf += msg.delta || "";
-        dstText.textContent = dstBuf;
-        dstText.scrollTop = dstText.scrollHeight;
-        break;
-      case "session.output_transcript.done":
-        if (to === activeOut) dstBuf += "\n";
-        break;
-      case "error":
-        console.error("Realtime error:", msg);
-        hint.textContent = "Error: " + (msg.error?.message || "realtime error");
-        hint.classList.add("error");
-        break;
-      default:
-        break;
+  function handleEvent(msg) {
+    const t = msg.type || "";
+    // --- What the speaker said (user audio transcription) ---
+    if (t === "conversation.item.input_audio_transcription.delta") {
+      srcSegHasDelta = true;
+      srcBuf += msg.delta || "";
+      srcText.textContent = srcBuf;
+      srcText.scrollTop = srcText.scrollHeight;
+      const spoken = detectLang(srcBuf.slice(-60));
+      updateDetectedUI(spoken);
+    } else if (t === "conversation.item.input_audio_transcription.completed") {
+      if (!srcSegHasDelta && msg.transcript) { srcBuf += msg.transcript; srcText.textContent = srcBuf; }
+      srcBuf += "\n"; srcSegHasDelta = false;
+      if (msg.transcript) updateDetectedUI(detectLang(msg.transcript));
+    }
+    // --- The translation (assistant audio transcript) ---
+    else if (t === "response.output_audio_transcript.delta" || t === "response.audio_transcript.delta") {
+      dstBuf += msg.delta || "";
+      dstText.textContent = dstBuf;
+      dstText.scrollTop = dstText.scrollHeight;
+    } else if (t === "response.output_audio_transcript.done" || t === "response.audio_transcript.done") {
+      dstBuf += "\n";
+    }
+    // --- Errors ---
+    else if (t === "error") {
+      console.error("Realtime error:", msg);
+      hint.textContent = "Error: " + (msg.error?.message || "realtime error");
+      hint.classList.add("error");
     }
   }
 

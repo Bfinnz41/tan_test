@@ -51,8 +51,25 @@ const PUBLIC_DIR = join(__dirname, "public");
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// The 13 supported output languages include both of ours.
-const SUPPORTED_OUTPUT = new Set(["en", "vi"]);
+// The interpreter model + voice. gpt-realtime-2 is promptable (unlike the
+// translate model), so we can constrain languages and control Vietnamese
+// politeness. Swap MODEL/VOICE here if you want to try others.
+const MODEL = "gpt-realtime-2";
+const VOICE = "marin";
+
+// This instruction is the whole quality lever. It (a) locks output to only
+// English/Vietnamese so it can never drift into Thai/Lao, (b) keeps it a pure
+// translator, and (c) enforces natural Vietnamese kinship pronouns/register.
+const INSTRUCTIONS = `You are a live, two-way interpreter between ENGLISH and VIETNAMESE, and nothing else.
+
+ABSOLUTE RULES:
+- Output ONLY English or Vietnamese. Never produce Thai, Lao, Chinese, or any other language, even if the audio momentarily sounds like one. If unsure, treat the speech as Vietnamese or English.
+- If the person speaks English, say it in natural, fluent Vietnamese. If they speak Vietnamese, say it in natural, fluent English.
+- You are ONLY a translator. Never answer questions, greet, explain, or add commentary. Say exactly what was said in the other language — nothing more, nothing less.
+- Preserve meaning, tone, emotion, and intent. Match the speaker's register (casual vs. formal).
+- In Vietnamese, use correct kinship pronouns and politeness (tôi, con, anh, em, chị, cô, chú, bác, ông, bà) based on context. When the relationship is unclear, default to polite, respectful forms.
+- Keep names, numbers, dates, and places exact.
+- Speak the translation immediately and naturally, like a professional simultaneous interpreter.`;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -76,16 +93,11 @@ async function createSession(req, res, url) {
     }), { "Content-Type": MIME[".json"] });
   }
 
-  const to = (url.searchParams.get("to") || "vi").toLowerCase();
-  if (!SUPPORTED_OUTPUT.has(to)) {
-    return send(res, 400, JSON.stringify({
-      error: `Unsupported output language "${to}". Use "en" or "vi".`,
-    }), { "Content-Type": MIME[".json"] });
-  }
-
   const payload = {
     session: {
-      model: "gpt-realtime-translate",
+      type: "realtime",
+      model: MODEL,
+      instructions: INSTRUCTIONS,
       audio: {
         input: {
           transcription: { model: "gpt-realtime-whisper" },
@@ -93,15 +105,17 @@ async function createSession(req, res, url) {
           // phone's speaker held near the laptop). "near_field" would treat
           // that as background noise and filter it out.
           noise_reduction: { type: "far_field" },
+          // Auto-respond when the speaker finishes a thought.
+          turn_detection: { type: "semantic_vad" },
         },
-        output: { language: to },
+        output: { voice: VOICE },
       },
     },
   };
 
   try {
     const r = await fetch(
-      "https://api.openai.com/v1/realtime/translations/client_secrets",
+      "https://api.openai.com/v1/realtime/client_secrets",
       {
         method: "POST",
         headers: {
@@ -138,7 +152,7 @@ async function createSession(req, res, url) {
 
     return send(res, 200, JSON.stringify({
       client_secret: clientSecret,
-      output_language: to,
+      model: MODEL,
       expires_at: data.expires_at ?? data.client_secret?.expires_at ?? null,
     }), { "Content-Type": MIME[".json"] });
   } catch (err) {

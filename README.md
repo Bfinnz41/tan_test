@@ -1,13 +1,16 @@
 # Live Interpreter — English ⇄ Vietnamese
 
-A real-time speech interpreter built on OpenAI's **`gpt-realtime-translate`**
-model. Speak into your mic and hear the translation streamed back in the other
-language, with live transcripts of both sides.
+A real-time speech interpreter built on OpenAI's **`gpt-realtime-2`** (GPT-5-class
+voice model), driven by a custom interpreter instruction. Speak into your mic and
+hear the translation streamed back in the other language, with live transcripts.
 
-- **Speech in, speech out**, low latency — translation starts before you finish
-  your sentence (no turn-by-turn waiting).
-- **Two-way**: tap ⇄ to flip between 🇬🇧→🇻🇳 and 🇻🇳→🇬🇧.
-- Source language is auto-detected; only the output language is set per session.
+- **Speech in, speech out**, low latency.
+- **Auto-detect, two-way**: speak English or Vietnamese and it translates into the
+  other automatically — one session handles both directions.
+- **Tuned for quality**: the prompt locks output to English/Vietnamese only (no
+  drifting into other languages) and enforces natural Vietnamese kinship pronouns
+  and politeness (anh/em/cô/chú…). Edit `INSTRUCTIONS` in `server.js` to adjust.
+- 🔊/🔇 button to mute playback and just read the transcript.
 
 ## How it works
 
@@ -44,12 +47,14 @@ speakers while the mic is live can create a feedback loop.
 
 ## Cost
 
-`gpt-realtime-translate` is billed per minute of audio (about **$0.034/min** at
-launch). Stop the session when you're not speaking.
+`gpt-realtime-2` is billed by audio tokens (roughly **~$0.05–0.15/min** depending
+on how much is spoken). Set a monthly spending cap in your OpenAI dashboard and
+stop the session when you're not using it.
 
 ## Notes / next steps
 
-- Model IDs (`gpt-realtime-translate`, `gpt-realtime-whisper`) are set in
-  `server.js` — swap them there if OpenAI renames or you want a different tier.
+- `MODEL`, `VOICE`, and the `INSTRUCTIONS` prompt are all at the top of
+  `server.js` — the prompt is the main quality lever (tone, formality, languages).
+- The model can't be forced to a specific English variant (e.g. US vs UK).
 - Ideas: save/download transcripts, a conversation history log, push-to-talk,
-  or a "conference" mode that shows both directions side by side.
+  or feeding a phone call's audio in digitally instead of through the mic.
