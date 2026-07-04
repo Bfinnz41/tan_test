@@ -10,10 +10,43 @@
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, normalize, extname } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load a local .env file (if present) so you can keep OPENAI_API_KEY in a file
+// instead of typing it into the terminal. Values already set in the real
+// environment win, so an explicit `export`/`$env:` still overrides the file.
+function loadEnvFile() {
+  try {
+    const raw = readFileSync(join(__dirname, ".env"), "utf8");
+    for (let line of raw.split(/\r?\n/)) {
+      line = line.trim();
+      if (!line || line.startsWith("#")) continue;
+      if (line.startsWith("export ")) line = line.slice(7).trim();
+      const eq = line.indexOf("=");
+      if (eq === -1) continue;
+      const key = line.slice(0, eq).trim();
+      let val = line.slice(eq + 1).trim();
+      // Strip surrounding quotes if present.
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      if (key && process.env[key] === undefined) process.env[key] = val;
+    }
+    console.log("  ✓  Loaded settings from .env file");
+  } catch {
+    // No .env file — that's fine; rely on real environment variables.
+  }
+}
+
+loadEnvFile();
+
 const PUBLIC_DIR = join(__dirname, "public");
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
