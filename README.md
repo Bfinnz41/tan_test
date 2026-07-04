@@ -1,14 +1,24 @@
 # Live Interpreter — English ⇄ Vietnamese
 
-A real-time speech interpreter built on OpenAI's **`gpt-realtime-translate`**, a
-dedicated speech-to-speech translation model. It only ever translates — it never
-chats, narrates, or answers, which makes it reliable as an interpreter. Speak into
-your mic and hear the translation in the other language, with live transcripts.
+A hands-free English⇄Vietnamese interpreter built as a **3-stage pipeline** for
+maximum accuracy. It listens, detects when you pause, and translates each
+sentence as a complete thought:
 
-- **Speech in, speech out**, low latency.
-- **Manual direction toggle**: tap ⇄ to set 🇻🇳→🇬🇧 or 🇬🇧→🇻🇳. The output language
-  is locked per session, so it can't drift into other languages.
-- 🔊/🔇 button to mute playback and just read the transcript.
+```
+🎙️ speech → Whisper (STT) → GPT-5 (translate) → TTS → 🔊 spoken translation
+```
+
+- **Sentence-by-sentence, hands-free** — a browser voice-activity detector
+  segments your speech by pause; no button-holding.
+- **Highest accuracy** — the translation step is a full text model translating a
+  complete, clean sentence with context, and it's fully tunable (Vietnamese
+  kinship pronouns, etc.). Trade-off: ~1–2s after each sentence.
+- **Manual direction toggle** (⇄) and a language hint to the transcriber, so it
+  never drifts into the wrong language.
+- 🔊/🔇 to mute playback and just read the transcript.
+
+All model IDs are constants at the top of `server.js` (`STT_MODEL`,
+`TRANSLATE_MODEL`, `TTS_MODEL`) — swap any of them in one place.
 
 ## How it works
 
@@ -45,15 +55,14 @@ speakers while the mic is live can create a feedback loop.
 
 ## Cost
 
-`gpt-realtime-translate` is billed per minute of audio (about **$0.034/min**).
-Set a monthly spending cap in your OpenAI dashboard and stop the session when
-you're not using it.
+Billed per stage (transcription + translation + speech). Roughly a few cents per
+sentence. Set a monthly spending cap in your OpenAI dashboard.
 
 ## Notes / next steps
 
-- `MODEL` and the audio settings are at the top of `server.js`.
-- This model is not promptable, so it can't be tuned for tone/formality or a
-  specific English variant. For that you'd trade up to a conversational model
-  (higher quality but it tends to chat instead of translate).
-- Ideas: save/download transcripts, push-to-talk, or feeding a phone call's
-  audio in digitally instead of through the mic.
+- Pause detection is tuned by `START_THRESH` / `SILENCE_MS` / `MIN_UTT_MS` near
+  the top of the `<script>` in `public/index.html`.
+- If a stage returns an HTTP 400, it's almost always a model ID — check the three
+  `*_MODEL` constants in `server.js` against your account's available models.
+- Ideas: streaming (live word-by-word) transcript, save/download transcripts,
+  or swapping the translate step to a different provider for Vietnamese.

@@ -8,74 +8,55 @@
   :root {
     --bg: #0f1117; --panel: #171a23; --panel-2: #1e222d;
     --ink: #e8eaf0; --muted: #8b93a7; --line: #2a2f3d;
-    --accent: #4f8cff; --accent-ink: #fff;
-    --live: #ff4d6d; --ok: #2fd07a;
+    --accent: #4f8cff; --accent-ink: #fff; --live: #ff4d6d; --ok: #2fd07a;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
+  body { margin: 0; background: var(--bg); color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    display: flex; flex-direction: column; min-height: 100vh;
-  }
-  header {
-    padding: 16px 18px 12px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  }
-  header h1 { font-size: 1.02rem; margin: 0; font-weight: 700; letter-spacing: .2px; }
-  header .sub { font-size: .74rem; color: var(--muted); margin-top: 2px; }
+    display: flex; flex-direction: column; min-height: 100vh; }
+  header { padding: 16px 18px 12px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  header h1 { font-size: 1.02rem; margin: 0; font-weight: 700; }
+  header .sub { font-size: .72rem; color: var(--muted); margin-top: 2px; }
   .status { display: flex; align-items: center; gap: 7px; font-size: .76rem; color: var(--muted); }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.connecting { background: var(--accent); animation: pulse 1s infinite; }
   .dot.live { background: var(--live); animation: pulse 1s infinite; }
+  .dot.working { background: var(--accent); animation: pulse .6s infinite; }
   .dot.ready { background: var(--ok); }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
-  .engine { display: flex; gap: 6px; margin: 14px 18px 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
-  .eng { flex: 1; padding: 8px 6px; border: none; border-radius: 9px; background: transparent; color: var(--muted); font-size: .82rem; font-weight: 600; cursor: pointer; }
-  .eng.active { background: var(--accent); color: #fff; }
-  .eng small { display: block; font-size: .62rem; font-weight: 500; opacity: .8; margin-top: 1px; }
-
-  .direction {
-    display: flex; align-items: stretch; gap: 0; margin: 10px 18px 0;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-  }
+  .direction { display: flex; align-items: stretch; margin: 16px 18px 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
   .lang { flex: 1; text-align: center; padding: 12px 8px; }
   .lang .flag { font-size: 1.5rem; line-height: 1; }
   .lang .name { font-size: .82rem; margin-top: 4px; font-weight: 600; }
-  .lang .role { font-size: .62rem; text-transform: uppercase; letter-spacing: .8px; margin-top: 3px; color: var(--muted); font-weight: 700; }
-  .lang.input .role { color: var(--live); }
-  .lang.output .role { color: var(--accent); }
-  .swap {
-    flex: none; width: 56px; border: none; background: var(--panel-2); color: var(--ink);
-    font-size: 1.25rem; cursor: pointer; border-left: 1px solid var(--line); border-right: 1px solid var(--line);
-  }
+  .lang .role { font-size: .62rem; text-transform: uppercase; letter-spacing: .8px; margin-top: 3px; font-weight: 700; color: var(--muted); }
+  .lang.input .role { color: var(--live); } .lang.output .role { color: var(--accent); }
+  .swap { flex: none; width: 56px; border: none; background: var(--panel-2); color: var(--ink);
+    font-size: 1.25rem; cursor: pointer; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
   .swap:active { background: var(--accent); color: #fff; }
 
-  main { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; overflow: hidden; }
+  main { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; overflow: hidden; }
   .track { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; }
-  .track.src { flex: 1; }
-  .track.dst { flex: 1.15; border-color: #2f3a55; }
-  .track h2 { font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+  .track.src { flex: 1; } .track.dst { flex: 1.15; border-color: #2f3a55; }
+  .track h2 { font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 8px; }
   .track.dst h2 { color: var(--accent); }
-  .transcript { flex: 1; overflow-y: auto; font-size: 1.12rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-  .track.dst .transcript { font-size: 1.28rem; font-weight: 500; }
+  .transcript { flex: 1; overflow-y: auto; font-size: 1.1rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .track.dst .transcript { font-size: 1.24rem; font-weight: 500; }
   .transcript:empty::before { content: attr(data-placeholder); color: var(--muted); font-size: .95rem; font-weight: 400; }
+  .transcript .pending { color: var(--muted); font-style: italic; }
+  .meter { height: 4px; background: var(--panel-2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .meter > span { display: block; height: 100%; width: 0%; background: var(--live); transition: width .06s; }
 
   footer { padding: 14px 18px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
   .controls { display: flex; gap: 10px; }
-  .mic {
-    flex: 1; padding: 16px; border: none; border-radius: 14px; font-size: 1.02rem; font-weight: 700;
-    background: var(--accent); color: var(--accent-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
-    transition: background .15s;
-  }
+  .mic { flex: 1; padding: 16px; border: none; border-radius: 14px; font-size: 1.02rem; font-weight: 700;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
   .mic:disabled { opacity: .55; cursor: default; }
   .mic.recording { background: var(--live); }
-  .mic .ico { font-size: 1.2rem; }
-  .toggle {
-    flex: none; width: 58px; border: 1px solid var(--line); border-radius: 14px;
-    background: var(--panel-2); color: var(--ink); font-size: 1.3rem; cursor: pointer;
-  }
+  .toggle { flex: none; width: 58px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); color: var(--ink); font-size: 1.3rem; cursor: pointer; }
   .toggle.off { opacity: .55; }
   .hint { text-align: center; font-size: .72rem; color: var(--muted); margin-top: 10px; }
   .error { color: var(--live); }
@@ -86,208 +67,220 @@
   <header>
     <div>
       <h1>Live Interpreter</h1>
-      <div class="sub" id="sub">English ⇄ Vietnamese</div>
+      <div class="sub">Whisper → GPT-5 → speech · sentence-by-sentence</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
   </header>
 
-  <div class="engine" id="engine">
-    <button class="eng active" data-engine="translate">Reliable<small>never chats</small></button>
-    <button class="eng" data-engine="pro">Higher quality<small>may rarely slip</small></button>
-  </div>
-
   <div class="direction" id="direction">
     <div class="lang input" id="langFrom">
-      <div class="flag" id="fromFlag">🇻🇳</div>
-      <div class="name" id="fromName">Vietnamese</div>
-      <div class="role">Speaking</div>
+      <div class="flag" id="fromFlag">🇻🇳</div><div class="name" id="fromName">Vietnamese</div><div class="role">Speaking</div>
     </div>
     <button class="swap" id="swap" title="Swap direction">⇄</button>
     <div class="lang output" id="langTo">
-      <div class="flag" id="toFlag">🇬🇧</div>
-      <div class="name" id="toName">English</div>
-      <div class="role">Translation</div>
+      <div class="flag" id="toFlag">🇬🇧</div><div class="name" id="toName">English</div><div class="role">Translation</div>
     </div>
   </div>
 
   <main>
     <section class="track src">
       <h2>🎙️ <span id="srcLabel">You said</span></h2>
-      <div class="transcript" id="srcText" data-placeholder="What the speaker says appears here…"></div>
+      <div class="transcript" id="srcText" data-placeholder="Speak a sentence, then pause — it translates each one…"></div>
+      <div class="meter"><span id="meterBar"></span></div>
     </section>
     <section class="track dst">
       <h2>🔊 <span id="dstLabel">Translation</span></h2>
-      <div class="transcript" id="dstText" data-placeholder="The translation appears here (and is spoken aloud)…"></div>
+      <div class="transcript" id="dstText" data-placeholder="The translation appears here and is spoken aloud…"></div>
     </section>
   </main>
 
   <footer>
     <div class="controls">
-      <button class="mic" id="mic"><span class="ico">🎙️</span><span id="micText">Start interpreting</span></button>
+      <button class="mic" id="mic">🎙️ <span id="micText">Start</span></button>
       <button class="toggle" id="audioToggle" title="Voice on/off">🔊</button>
     </div>
-    <div class="hint" id="hint">Pick an engine + direction, then tap to start.</div>
+    <div class="hint" id="hint">Tap Start, allow the mic, and speak one sentence at a time.</div>
   </footer>
 
-  <audio id="remoteAudio" autoplay></audio>
+  <audio id="player"></audio>
 
 <script>
 (() => {
-  const LANGS = {
-    en: { flag: "🇬🇧", name: "English" },
-    vi: { flag: "🇻🇳", name: "Vietnamese" },
-  };
-
+  const LANGS = { en: { flag: "🇬🇧", name: "English" }, vi: { flag: "🇻🇳", name: "Vietnamese" } };
   const $ = (id) => document.getElementById(id);
-  const dot = $("dot"), statusText = $("statusText");
-  const micBtn = $("mic"), micText = $("micText"), hint = $("hint");
-  const srcText = $("srcText"), dstText = $("dstText");
-  const remoteAudio = $("remoteAudio"), audioToggle = $("audioToggle");
+  const dot = $("dot"), statusText = $("statusText"), hint = $("hint");
+  const micBtn = $("mic"), micText = $("micText"), audioToggle = $("audioToggle");
+  const srcText = $("srcText"), dstText = $("dstText"), meterBar = $("meterBar"), player = $("player");
 
-  let engine = "translate";       // "translate" | "pro"
+  // Tuning knobs for pause detection.
+  const START_THRESH = 0.020;   // volume (0..1) that counts as speech
+  const SILENCE_MS = 750;       // silence after speech that ends a sentence
+  const MIN_UTT_MS = 350;       // ignore blips shorter than this
+
   let from = "vi", to = "en";
-  let running = false, playAudio = true;
-  let pc = null, dc = null, micStream = null;
-  let srcBuf = "", dstBuf = "", srcSegHasDelta = false;
+  let listening = false, playAudio = true;
+  let micStream = null, audioCtx = null, analyser = null, vadTimer = null, buf = null;
+  let recorder = null, chunks = [], speaking = false, lastVoice = 0, uttStart = 0;
+  let inFlight = 0;
+  const audioQueue = []; let playing = false;
 
-  const setStatus = (state, text) => { dot.className = "dot" + (state ? " " + state : ""); statusText.textContent = text; };
+  const setStatus = (s, t) => { dot.className = "dot" + (s ? " " + s : ""); statusText.textContent = t; };
 
   function renderDirection() {
     $("fromFlag").textContent = LANGS[from].flag; $("fromName").textContent = LANGS[from].name;
-    $("toFlag").textContent = LANGS[to].flag;     $("toName").textContent = LANGS[to].name;
+    $("toFlag").textContent = LANGS[to].flag; $("toName").textContent = LANGS[to].name;
     $("srcLabel").textContent = "You said (" + LANGS[from].name + ")";
     $("dstLabel").textContent = "Translation (" + LANGS[to].name + ")";
-    $("sub").textContent = "English ⇄ Vietnamese · " + (engine === "pro" ? "gpt-realtime-2" : "gpt-realtime-translate");
   }
 
-  async function reconnectIfRunning() {
-    if (running) { setStatus("connecting", "Switching…"); await stop(true); await start(); }
-  }
-
-  document.querySelectorAll(".eng").forEach((b) => b.addEventListener("click", async () => {
-    engine = b.dataset.engine;
-    document.querySelectorAll(".eng").forEach((x) => x.classList.toggle("active", x === b));
-    renderDirection();
-    await reconnectIfRunning();
-  }));
-
-  $("swap").addEventListener("click", async () => {
-    [from, to] = [to, from];
-    renderDirection();
-    await reconnectIfRunning();
-  });
-
+  $("swap").addEventListener("click", () => { [from, to] = [to, from]; renderDirection(); });
   audioToggle.addEventListener("click", () => {
-    playAudio = !playAudio;
-    remoteAudio.muted = !playAudio;
-    audioToggle.textContent = playAudio ? "🔊" : "🔇";
-    audioToggle.classList.toggle("off", !playAudio);
+    playAudio = !playAudio; player.muted = !playAudio;
+    audioToggle.textContent = playAudio ? "🔊" : "🔇"; audioToggle.classList.toggle("off", !playAudio);
   });
+  micBtn.addEventListener("click", () => (listening ? stop() : start()));
 
-  micBtn.addEventListener("click", () => (running ? stop() : start()));
+  function pickMime() {
+    for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+    }
+    return "";
+  }
 
   async function start() {
     try {
-      srcBuf = ""; dstBuf = ""; srcText.textContent = ""; dstText.textContent = ""; srcSegHasDelta = false;
-      setStatus("connecting", "Connecting…");
-      micBtn.disabled = true; micText.textContent = "Connecting…";
+      setStatus("connecting", "Starting…"); micBtn.disabled = true;
       hint.classList.remove("error");
-
-      const res = await fetch("/api/session?engine=" + engine + "&from=" + from + "&to=" + to, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Session request failed");
-      const clientSecret = data.client_secret;
-      const isPro = data.engine === "pro";
-
-      pc = new RTCPeerConnection();
-      pc.ontrack = ({ streams }) => { remoteAudio.srcObject = streams[0]; remoteAudio.muted = !playAudio; };
-      dc = pc.createDataChannel("oai-events");
-      dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handleEvent(m); };
-      if (isPro) {
-        dc.onopen = () => dc.send(JSON.stringify({
-          type: "session.update",
-          session: { type: "realtime", audio: { input: { transcription: { model: "gpt-realtime-whisper" } } } },
-        }));
-      }
-
       micStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      micStream.getAudioTracks().forEach((t) => pc.addTrack(t, micStream));
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(micStream);
+      analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
+      buf = new Uint8Array(analyser.fftSize);
+      src.connect(analyser);
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      const sdpUrl = isPro
-        ? "https://api.openai.com/v1/realtime/calls?model=" + encodeURIComponent(data.model || "gpt-realtime-2")
-        : "https://api.openai.com/v1/realtime/translations/calls";
-      const sdpRes = await fetch(sdpUrl, {
-        method: "POST",
-        headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/sdp" },
-        body: offer.sdp,
-      });
-      if (!sdpRes.ok) throw new Error("OpenAI handshake failed (" + sdpRes.status + ")");
-      await pc.setRemoteDescription({ type: "answer", sdp: await sdpRes.text() });
-
-      running = true;
+      listening = true; speaking = false;
       micBtn.disabled = false; micBtn.classList.add("recording"); micText.textContent = "Stop";
-      hint.textContent = "Listening… speak " + LANGS[from].name + ".";
-      setStatus("live", LANGS[from].name + " → " + LANGS[to].name);
+      setStatus("live", "Listening");
+      hint.textContent = "Speak a sentence in " + LANGS[from].name + ", then pause.";
+      vadTimer = setInterval(vadTick, 40);
     } catch (err) {
       console.error(err);
       hint.textContent = "Error: " + err.message; hint.classList.add("error");
-      setStatus("", "Error");
-      micBtn.disabled = false; micText.textContent = "Start interpreting";
-      await stop(true);
+      setStatus("", "Error"); micBtn.disabled = false; micText.textContent = "Start";
     }
   }
 
-  async function stop(quiet) {
-    running = false;
-    micBtn.classList.remove("recording");
-    if (!quiet) {
-      micText.textContent = "Start interpreting";
-      if (!hint.classList.contains("error")) hint.textContent = "Stopped.";
-      setStatus("ready", "Ready");
-    }
-    try { dc && dc.close(); } catch {}
-    try { pc && pc.close(); } catch {}
+  function stop() {
+    listening = false; speaking = false;
+    clearInterval(vadTimer); vadTimer = null;
+    if (recorder && recorder.state !== "inactive") { recorder.onstop = null; try { recorder.stop(); } catch {} }
+    recorder = null;
     if (micStream) micStream.getTracks().forEach((t) => t.stop());
-    dc = null; pc = null; micStream = null;
+    if (audioCtx) { try { audioCtx.close(); } catch {} }
+    micStream = null; audioCtx = null; analyser = null;
+    micBtn.classList.remove("recording"); micText.textContent = "Start";
+    meterBar.style.width = "0%";
+    setStatus("ready", "Ready");
+    if (!hint.classList.contains("error")) hint.textContent = "Stopped.";
   }
 
-  // Handles BOTH engines' event schemas (names don't collide).
-  function handleEvent(msg) {
-    const t = msg.type || "";
-    // Input transcript — translate engine
-    if (t === "session.input_transcript.delta") { appendSrc(msg.delta); }
-    else if (t === "session.input_transcript.done") { finishSrc(msg.transcript); }
-    // Input transcript — pro engine
-    else if (t === "conversation.item.input_audio_transcription.delta") { appendSrc(msg.delta); }
-    else if (t === "conversation.item.input_audio_transcription.completed") { finishSrc(msg.transcript); }
-    // Output transcript — translate engine
-    else if (t === "session.output_transcript.delta") { appendDst(msg.delta); }
-    else if (t === "session.output_transcript.done") { dstBuf += "\n"; }
-    // Output transcript — pro engine
-    else if (t === "response.output_audio_transcript.delta" || t === "response.audio_transcript.delta") { appendDst(msg.delta); }
-    else if (t === "response.output_audio_transcript.done" || t === "response.audio_transcript.done") { dstBuf += "\n"; }
-    // Errors
-    else if (t === "error") {
-      console.error("Realtime error:", msg);
-      hint.textContent = "Error: " + (msg.error?.message || "realtime error"); hint.classList.add("error");
+  function vadTick() {
+    if (!listening || !analyser) return;
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / buf.length);
+    meterBar.style.width = Math.min(100, rms * 400) + "%";
+    const now = performance.now();
+
+    if (rms > START_THRESH) {
+      if (!speaking) { speaking = true; uttStart = now; startUtterance(); }
+      lastVoice = now;
+    } else if (speaking && now - lastVoice > SILENCE_MS) {
+      speaking = false;
+      const dur = now - uttStart;
+      if (dur > MIN_UTT_MS) endUtterance();       // finalize + send
+      else discardUtterance();                     // too short: drop
     }
   }
 
-  function appendSrc(delta) {
-    srcSegHasDelta = true; srcBuf += delta || "";
-    srcText.textContent = srcBuf; srcText.scrollTop = srcText.scrollHeight;
+  function startUtterance() {
+    chunks = [];
+    const mime = pickMime();
+    try { recorder = new MediaRecorder(micStream, mime ? { mimeType: mime } : undefined); }
+    catch { recorder = new MediaRecorder(micStream); }
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      const type = (chunks[0] && chunks[0].type) || "audio/webm";
+      const blob = new Blob(chunks, { type });
+      if (blob.size > 1200) sendUtterance(blob);
+    };
+    recorder.start();
   }
-  function finishSrc(transcript) {
-    if (!srcSegHasDelta && transcript) { srcBuf += transcript; srcText.textContent = srcBuf; }
-    srcBuf += "\n"; srcSegHasDelta = false;
+  function endUtterance() { if (recorder && recorder.state !== "inactive") recorder.stop(); recorder = null; }
+  function discardUtterance() {
+    if (recorder && recorder.state !== "inactive") { recorder.onstop = null; try { recorder.stop(); } catch {} }
+    recorder = null;
   }
-  function appendDst(delta) {
-    dstBuf += delta || "";
-    dstText.textContent = dstBuf; dstText.scrollTop = dstText.scrollHeight;
+
+  async function sendUtterance(blob) {
+    inFlight++;
+    setStatus("working", "Translating…");
+    const pendingId = "p" + Date.now() + Math.round(performance.now());
+    appendPending(srcText, pendingId, "…");
+    try {
+      const res = await fetch("/api/interpret?from=" + from + "&to=" + to, {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/webm" },
+        body: blob,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "pipeline failed");
+      if (data.skip) { removePending(pendingId); return; }
+      replacePending(srcText, pendingId, data.source || "(…)");
+      if (data.translation) appendLine(dstText, data.translation);
+      if (data.audio) enqueueAudio(data.audio);
+    } catch (err) {
+      console.error(err);
+      replacePending(srcText, pendingId, "");
+      hint.textContent = "Error: " + err.message; hint.classList.add("error");
+    } finally {
+      inFlight--;
+      if (inFlight === 0 && listening) setStatus("live", "Listening");
+    }
+  }
+
+  // --- transcript helpers ---
+  function appendLine(el, text) {
+    el.textContent += (el.textContent ? "\n" : "") + text;
+    el.scrollTop = el.scrollHeight;
+  }
+  function appendPending(el, id, text) {
+    const span = document.createElement("span");
+    span.className = "pending"; span.dataset.pid = id;
+    span.textContent = (el.childNodes.length ? "\n" : "") + text;
+    el.appendChild(span); el.scrollTop = el.scrollHeight;
+  }
+  function findPending(id) { return document.querySelector('[data-pid="' + id + '"]'); }
+  function replacePending(el, id, text) {
+    const span = findPending(id); if (!span) return;
+    if (!text) { span.remove(); return; }
+    span.className = ""; span.textContent = (el.firstChild === span ? "" : "\n") + text;
+    el.scrollTop = el.scrollHeight;
+  }
+  function removePending(id) { const s = findPending(id); if (s) s.remove(); }
+
+  // --- audio playback queue (keeps translations from overlapping) ---
+  function enqueueAudio(b64) { audioQueue.push(b64); if (!playing) playNext(); }
+  function playNext() {
+    if (!audioQueue.length) { playing = false; return; }
+    playing = true;
+    player.src = "data:audio/mp3;base64," + audioQueue.shift();
+    player.muted = !playAudio;
+    player.onended = playNext;
+    player.play().catch(() => playNext());
   }
 
   renderDirection();
