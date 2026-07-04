@@ -1,15 +1,13 @@
-// Live Interpreter — minimal zero-dependency Node server.
+// Live Interpreter — Google Gemini Live Translate backend.
 //
 //   1. Serve the static frontend in ./public
-//   2. Mint short-lived OpenAI "client secrets" so the browser can open a
-//      WebRTC session WITHOUT ever seeing the real OPENAI_API_KEY.
+//   2. Mint short-lived EPHEMERAL TOKENS so the browser can open a WebSocket to
+//      the Gemini Live API directly — the real GEMINI_API_KEY never leaves here.
 //
-// Uses gpt-realtime-translate: a dedicated speech-to-speech TRANSLATION model.
-// Unlike a conversational model, it only ever translates — it never chats,
-// narrates, or answers. The output language is locked per session (set by the
-// direction toggle), so it can't drift into other languages.
+// Model: gemini-3.5-live-translate-preview — a dedicated real-time speech-to-
+// speech translation model (streams as you talk, and only translates).
 //
-// Run:  OPENAI_API_KEY=sk-... npm start
+// Run:  GEMINI_API_KEY=AIza... npm start
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -19,8 +17,6 @@ import { dirname, join, normalize, extname } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load a local .env file (if present) so you can keep OPENAI_API_KEY in a file
-// instead of typing it into the terminal. Real environment values win.
 function loadEnvFile() {
   try {
     const raw = readFileSync(join(__dirname, ".env"), "utf8");
@@ -32,116 +28,79 @@ function loadEnvFile() {
       if (eq === -1) continue;
       const key = line.slice(0, eq).trim();
       let val = line.slice(eq + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
       if (key && process.env[key] === undefined) process.env[key] = val;
     }
     console.log("  ✓  Loaded settings from .env file");
-  } catch {
-    // No .env file — rely on real environment variables.
-  }
+  } catch {}
 }
-
 loadEnvFile();
 
 const PUBLIC_DIR = join(__dirname, "public");
 const PORT = process.env.PORT || 3000;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-const MODEL = "gpt-realtime-translate";
-const LANG_NAMES = { en: "English", vi: "Vietnamese" };
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const MODEL = "gemini-3.5-live-translate-preview";
 
 const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".svg": "image/svg+xml",
-  ".json": "application/json; charset=utf-8",
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
+  ".ico": "image/x-icon", ".svg": "image/svg+xml",
 };
+function send(res, status, body, headers = {}) { res.writeHead(status, { "Cache-Control": "no-store", ...headers }); res.end(body); }
+const json = (res, status, obj) => send(res, status, JSON.stringify(obj), { "Content-Type": MIME[".json"] });
 
-function send(res, status, body, headers = {}) {
-  res.writeHead(status, { "Cache-Control": "no-store", ...headers });
-  res.end(body);
+// Mint a single-use ephemeral token for the browser's Live API WebSocket.
+async function mintToken() {
+  const now = Date.now();
+  const body = {
+    uses: 1,
+    expireTime: new Date(now + 30 * 60 * 1000).toISOString(),        // token valid 30 min
+    newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),   // 1 min to open the session
+  };
+  // The REST collection name for auth tokens; try both spellings defensively.
+  const urls = [
+    "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
+    "https://generativelanguage.googleapis.com/v1alpha/authTokens",
+  ];
+  let lastErr = "unknown";
+  for (const u of urls) {
+    let r;
+    try {
+      r = await fetch(u, {
+        method: "POST",
+        headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (e) { lastErr = String(e); continue; }
+    const text = await r.text();
+    if (r.ok) {
+      const data = JSON.parse(text);
+      return data.name || data.token; // token is the resource "name"
+    }
+    lastErr = r.status + ": " + text.slice(0, 300);
+    if (r.status !== 404) break; // only try the alternate spelling on a 404
+  }
+  throw new Error("token mint failed — " + lastErr);
 }
 
-// POST /api/session?to=en|vi  ->  { client_secret, output_language }
-async function createSession(req, res, url) {
-  if (!OPENAI_API_KEY) {
-    return send(res, 500, JSON.stringify({
-      error: "OPENAI_API_KEY is not set on the server. Export it before starting.",
-    }), { "Content-Type": MIME[".json"] });
-  }
-
-  const to = (url.searchParams.get("to") || "en").toLowerCase();
-  if (!LANG_NAMES[to]) {
-    return send(res, 400, JSON.stringify({
-      error: `Unsupported output language "${to}". Use "en" or "vi".`,
-    }), { "Content-Type": MIME[".json"] });
-  }
-
-  const payload = {
-    session: {
-      model: MODEL,
-      audio: {
-        input: {
-          transcription: { model: "gpt-realtime-whisper" },
-          // near_field = clean pickup of a person speaking into the device.
-          noise_reduction: { type: "near_field" },
-        },
-        output: { language: to },
-      },
-    },
-  };
-
+async function tokenHandler(req, res) {
+  if (!GEMINI_API_KEY) return json(res, 500, { error: "GEMINI_API_KEY is not set on the server." });
   try {
-    const r = await fetch(
-      "https://api.openai.com/v1/realtime/translations/client_secrets",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    const text = await r.text();
-    if (!r.ok) {
-      console.error("OpenAI client_secrets error:", r.status, text);
-      return send(res, 502, JSON.stringify({
-        error: "Failed to create OpenAI session.",
-        status: r.status,
-        detail: text.slice(0, 500),
-      }), { "Content-Type": MIME[".json"] });
-    }
-
-    const data = JSON.parse(text);
-    const clientSecret =
-      data.value ??
-      data.client_secret?.value ??
-      (typeof data.client_secret === "string" ? data.client_secret : null);
-
-    if (!clientSecret) {
-      console.error("Unexpected client_secrets response shape:", text.slice(0, 500));
-      return send(res, 502, JSON.stringify({
-        error: "Could not find client secret in OpenAI response.",
-      }), { "Content-Type": MIME[".json"] });
-    }
-
-    return send(res, 200, JSON.stringify({
-      client_secret: clientSecret,
-      output_language: to,
-      expires_at: data.expires_at ?? data.client_secret?.expires_at ?? null,
-    }), { "Content-Type": MIME[".json"] });
+    const token = await mintToken();
+    return json(res, 200, { token, model: MODEL });
   } catch (err) {
-    console.error("Session creation failed:", err);
-    return send(res, 500, JSON.stringify({ error: String(err) }), {
-      "Content-Type": MIME[".json"],
-    });
+    console.error("token error:", err);
+    return json(res, 502, { error: String(err.message || err) });
   }
+}
+
+// GET /api/health — confirms the key works and a token can be minted.
+async function health(req, res) {
+  const out = { key_present: !!GEMINI_API_KEY, model: MODEL, token: "not tested" };
+  if (!GEMINI_API_KEY) return json(res, 200, out);
+  try { await mintToken(); out.token = "OK"; }
+  catch (e) { out.token = "ERROR " + String(e.message || e); }
+  return json(res, 200, out);
 }
 
 async function serveStatic(req, res, url) {
@@ -151,25 +110,20 @@ async function serveStatic(req, res, url) {
   if (!filePath.startsWith(PUBLIC_DIR)) return send(res, 403, "Forbidden");
   try {
     const data = await readFile(filePath);
-    const type = MIME[extname(filePath)] || "application/octet-stream";
-    return send(res, 200, data, { "Content-Type": type });
-  } catch {
-    return send(res, 404, "Not found");
-  }
+    return send(res, 200, data, { "Content-Type": MIME[extname(filePath)] || "application/octet-stream" });
+  } catch { return send(res, 404, "Not found"); }
 }
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  if (url.pathname === "/api/session" && req.method === "POST") return createSession(req, res, url);
+  if (url.pathname === "/api/token" && req.method === "POST") return tokenHandler(req, res);
+  if (url.pathname === "/api/health" && req.method === "GET") return health(req, res);
   if (req.method === "GET") return serveStatic(req, res, url);
   return send(res, 405, "Method not allowed");
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  Live Interpreter running at http://localhost:${PORT}`);
-  if (!OPENAI_API_KEY) {
-    console.log("  ⚠  OPENAI_API_KEY is NOT set — sessions will fail until you export it.\n");
-  } else {
-    console.log("  ✓  OPENAI_API_KEY detected.\n");
-  }
+  console.log(`\n  Live Interpreter (Gemini) running at http://localhost:${PORT}`);
+  console.log(`  Model: ${MODEL}`);
+  console.log(GEMINI_API_KEY ? "  ✓  GEMINI_API_KEY detected.\n" : "  ⚠  GEMINI_API_KEY is NOT set.\n");
 });
