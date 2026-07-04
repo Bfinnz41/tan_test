@@ -57,19 +57,28 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const MODEL = "gpt-realtime-2";
 const VOICE = "marin";
 
-// This instruction is the whole quality lever. It (a) locks output to only
-// English/Vietnamese so it can never drift into Thai/Lao, (b) keeps it a pure
-// translator, and (c) enforces natural Vietnamese kinship pronouns/register.
-const INSTRUCTIONS = `You are a live, two-way interpreter between ENGLISH and VIETNAMESE, and nothing else.
+const LANG_NAMES = { en: "English", vi: "Vietnamese" };
 
-ABSOLUTE RULES:
-- Output ONLY English or Vietnamese. Never produce Thai, Lao, Chinese, or any other language, even if the audio momentarily sounds like one. If unsure, treat the speech as Vietnamese or English.
-- If the person speaks English, say it in natural, fluent Vietnamese. If they speak Vietnamese, say it in natural, fluent English.
-- You are ONLY a translator. Never answer questions, greet, explain, or add commentary. Say exactly what was said in the other language — nothing more, nothing less.
-- Preserve meaning, tone, emotion, and intent. Match the speaker's register (casual vs. formal).
-- In Vietnamese, use correct kinship pronouns and politeness (tôi, con, anh, em, chị, cô, chú, bác, ông, bà) based on context. When the relationship is unclear, default to polite, respectful forms.
-- Keep names, numbers, dates, and places exact.
-- Speak the translation immediately and naturally, like a professional simultaneous interpreter.`;
+// The instruction is the whole quality lever. It is DIRECTIONAL: the speaker's
+// language is fixed by the toggle, which removes all guesswork (and kills the
+// "drifts into Thai" problem). It keeps the model a pure translator and enforces
+// natural Vietnamese kinship pronouns/register.
+function buildInstructions(from, to) {
+  const F = LANG_NAMES[from], T = LANG_NAMES[to];
+  const viNote = to === "vi"
+    ? `\n6. Use correct Vietnamese kinship pronouns and politeness (tôi, con, anh, em, chị, cô, chú, bác, ông, bà) from context; default to polite, respectful forms when unclear.`
+    : "";
+  return `You are a professional simultaneous interpreter. Your ONLY job is to translate ${F} speech into ${T}. You are a translation machine, NOT a conversation partner. The speaker is speaking ${F}.
+
+STRICT RULES — follow every one, exactly:
+1. Output ONLY ${T}. Never speak ${F} or any other language — not a single word of ${F}.
+2. TRANSLATE, never respond. Do NOT answer, agree, greet, thank, acknowledge, or add filler ("okay", "yes", "sure", "got it", "cảm ơn"). If the speaker asks a question, translate the QUESTION into ${T} — do NOT answer it.
+3. Say nothing except the translation itself. No commentary, no "the speaker said", no explanations.
+4. Preserve meaning, tone, emotion, numbers, names, dates, and places exactly.
+5. Match the speaker's register (casual vs. formal).${viNote}
+
+You never break character. For every piece of ${F} speech, you speak ONLY its ${T} translation, then wait silently for the next speech.`;
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -93,11 +102,19 @@ async function createSession(req, res, url) {
     }), { "Content-Type": MIME[".json"] });
   }
 
+  const from = (url.searchParams.get("from") || "vi").toLowerCase();
+  const to = (url.searchParams.get("to") || "en").toLowerCase();
+  if (!LANG_NAMES[from] || !LANG_NAMES[to] || from === to) {
+    return send(res, 400, JSON.stringify({
+      error: `Invalid direction "${from}->${to}". Use en/vi, and they must differ.`,
+    }), { "Content-Type": MIME[".json"] });
+  }
+
   const payload = {
     session: {
       type: "realtime",
       model: MODEL,
-      instructions: INSTRUCTIONS,
+      instructions: buildInstructions(from, to),
       audio: {
         input: {
           transcription: { model: "gpt-realtime-whisper" },
