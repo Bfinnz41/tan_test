@@ -121,7 +121,6 @@
     <div class="slots" id="slots"></div>
     <div class="legend">
       <span><i class="dot good"></i> Tốt — nên đi</span>
-      <span><i class="dot mid"></i> Bình thường</span>
       <span><i class="dot bad"></i> Xấu — nên tránh</span>
     </div>
   </div>
@@ -204,7 +203,7 @@ function convertSolar2Lunar(dd,mm,yy){
 
 /* ---------- Categories (số dư -> kết quả) ---------- */
 const CATS={
-  1:{name:"Đại an", q:"good", quality:"Rất tốt",
+  1:{name:"Đại an", q:"good", quality:"Tốt",
      desc:"Mọi việc đều tốt, cầu tài đi hướng Tây Nam. Nhà cửa yên lành, người xuất hành đều bình yên."},
   2:{name:"Tốc hỉ", q:"good", quality:"Tốt",
      desc:"Niềm vui sắp tới, cầu tài đi hướng Nam, đi việc quan nhiều may mắn. Người xuất hành bình yên, chăn nuôi thuận lợi, người đi có tin về."},
@@ -212,7 +211,7 @@ const CATS={
      desc:"Nghiệp khó thành, cầu tài mờ mịt, kiện cáo nên hoãn lại. Người đi chưa có tin về, đi hướng Nam tìm nhanh mới thấy. Phòng cãi cọ, miệng tiếng. Việc làm chậm nhưng chắc chắn."},
   4:{name:"Xích khẩu", q:"bad", quality:"Xấu",
      desc:"Hay cãi cọ, gây chuyện đói kém, phải nên đề phòng. Người ra đi nên hoãn lại, phòng người nguyền rủa, tránh lây bệnh."},
-  5:{name:"Tiểu cát", q:"good", quality:"Rất tốt",
+  5:{name:"Tiểu cát", q:"good", quality:"Tốt",
      desc:"Rất tốt lành, đi đường gặp may mắn, buôn bán có lời. Phụ nữ báo tin mừng, người đi sắp về nhà. Mọi việc hoà hợp, có bệnh cầu sẽ khỏi, người nhà đều mạnh khoẻ."},
   6:{name:"Tuyệt lộ", q:"bad", quality:"Xấu",
      desc:"Cầu tài không có lợi, hay bị trái ý, ra đi gặp hạn. Việc quan phải đòn, gặp ma quỷ phải cúng lễ mới mong được an."}
