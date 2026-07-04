@@ -47,6 +47,7 @@
   .track.dst .transcript { font-size: 1.24rem; font-weight: 500; }
   .transcript:empty::before { content: attr(data-placeholder); color: var(--muted); font-size: .95rem; font-weight: 400; }
   .transcript .pending { color: var(--muted); font-style: italic; }
+  .transcript .errline { color: var(--live); font-weight: 600; }
   .meter { height: 4px; background: var(--panel-2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .meter > span { display: block; height: 100%; width: 0%; background: var(--live); transition: width .06s; }
 
@@ -230,23 +231,30 @@
     setStatus("working", "Translating…");
     const pendingId = "p" + Date.now() + Math.round(performance.now());
     appendPending(srcText, pendingId, "…");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
     try {
       const res = await fetch("/api/interpret?from=" + from + "&to=" + to, {
         method: "POST",
         headers: { "Content-Type": blob.type || "audio/webm" },
         body: blob,
+        signal: controller.signal,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "pipeline failed");
+      if (!res.ok) throw new Error(data.error || ("pipeline failed (" + res.status + ")"));
       if (data.skip) { removePending(pendingId); return; }
       replacePending(srcText, pendingId, data.source || "(…)");
       if (data.translation) appendLine(dstText, data.translation);
       if (data.audio) enqueueAudio(data.audio);
     } catch (err) {
       console.error(err);
-      replacePending(srcText, pendingId, "");
-      hint.textContent = "Error: " + err.message; hint.classList.add("error");
+      const short = err.name === "AbortError"
+        ? "Timed out (server may be waking up — try again)"
+        : err.message;
+      failPending(srcText, pendingId, "⚠ " + short);
+      hint.textContent = "Error: " + short; hint.classList.add("error");
     } finally {
+      clearTimeout(timer);
       inFlight--;
       if (inFlight === 0 && listening) setStatus("live", "Listening");
     }
@@ -271,6 +279,12 @@
     el.scrollTop = el.scrollHeight;
   }
   function removePending(id) { const s = findPending(id); if (s) s.remove(); }
+  function failPending(el, id, text) {
+    const span = findPending(id); if (!span) return;
+    span.className = "errline";
+    span.textContent = (el.firstChild === span ? "" : "\n") + text;
+    el.scrollTop = el.scrollHeight;
+  }
 
   // --- audio playback queue (keeps translations from overlapping) ---
   function enqueueAudio(b64) { audioQueue.push(b64); if (!playing) playNext(); }

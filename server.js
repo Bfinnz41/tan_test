@@ -46,9 +46,21 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // --- Models (swap any of these in one place if you want to tune) ---
 const STT_MODEL = "gpt-4o-transcribe";   // speech -> text (Whisper family)
-const TRANSLATE_MODEL = "gpt-5";          // text -> translated text (highest quality)
+const TRANSLATE_MODEL = "gpt-5.5";        // text -> translated text (highest quality)
 const TTS_MODEL = "gpt-4o-mini-tts";      // translated text -> speech
 const TTS_VOICE = "alloy";
+
+// Pick a file extension that matches the audio the browser actually sent.
+// iOS Safari sends audio/mp4; Chrome sends audio/webm. OpenAI's transcriber
+// rejects a wrong extension, so this must match the real content.
+function extForMime(m) {
+  m = (m || "").toLowerCase();
+  if (m.includes("mp4") || m.includes("m4a") || m.includes("aac")) return "mp4";
+  if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+  if (m.includes("ogg")) return "ogg";
+  if (m.includes("wav")) return "wav";
+  return "webm";
+}
 
 const LANG_NAMES = { en: "English", vi: "Vietnamese" };
 
@@ -84,7 +96,8 @@ function readBody(req) {
 // --- Pipeline stages ---
 async function transcribe(audioBuffer, mimeType, fromLang) {
   const form = new FormData();
-  form.append("file", new Blob([audioBuffer], { type: mimeType || "audio/webm" }), "audio.webm");
+  const filename = "audio." + extForMime(mimeType);
+  form.append("file", new Blob([audioBuffer], { type: mimeType || "audio/webm" }), filename);
   form.append("model", STT_MODEL);
   form.append("language", fromLang); // strong hint => no wrong-language drift
   const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
