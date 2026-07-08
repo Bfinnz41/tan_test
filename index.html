@@ -37,6 +37,8 @@
   }
   .row{display:flex; gap:12px}
   .row .field{flex:1}
+  .col{flex:1}
+  .sub{display:block; font-size:.75rem; color:var(--muted); margin-bottom:4px}
   button{
     width:100%; padding:13px; font-size:1.05rem; font-weight:700; cursor:pointer;
     background:var(--accent); color:#fff; border:none; border-radius:10px;
@@ -95,13 +97,20 @@
 
   <div class="card">
     <div class="field">
-      <label for="date">Ngày dự định đi (dương lịch)</label>
-      <input type="date" id="date">
+      <label>Ngày dự định đi (dương lịch)</label>
+      <div class="row">
+        <div class="col"><span class="sub">Ngày</span><select id="day"></select></div>
+        <div class="col"><span class="sub">Tháng</span><select id="month"></select></div>
+        <div class="col"><span class="sub">Năm</span><select id="year"></select></div>
+      </div>
       <div class="lunar-note" id="lunarNote"></div>
     </div>
     <div class="field">
-      <label for="time">Giờ dự định đi</label>
-      <input type="time" id="time">
+      <label>Giờ dự định đi</label>
+      <div class="row">
+        <div class="col"><span class="sub">Giờ</span><select id="hour"></select></div>
+        <div class="col"><span class="sub">Phút</span><select id="minute"></select></div>
+      </div>
     </div>
     <button id="calcBtn">Xem giờ xuất hành</button>
   </div>
@@ -125,7 +134,7 @@
     </div>
   </div>
 
-  <footer>Phương pháp dân gian, mang tính tham khảo. · phiên bản 2026-07-04b</footer>
+  <footer>Phương pháp dân gian, mang tính tham khảo. · phiên bản 2026-07-04c</footer>
 </div>
 
 <script>
@@ -247,20 +256,19 @@ const QCLASS={good:"good", bad:"bad"};
 const $=id=>document.getElementById(id);
 function pad(n){return String(n).padStart(2,"0");}
 
+function getSolar(){ return {d:+$("day").value, m:+$("month").value, y:+$("year").value}; }
+
 function showLunar(){
-  const d=$("date").value; if(!d) return null;
-  const [y,m,dd]=d.split("-").map(Number);
-  const L=convertSolar2Lunar(dd,m,y);
+  const {d,m,y}=getSolar(); if(!d||!m||!y) return null;
+  const L=convertSolar2Lunar(d,m,y);
   if(!L){ $("lunarNote").innerHTML=`<span style="color:var(--bad)">Ngoài phạm vi tra cứu (${LUNAR_MIN}–${LUNAR_MAX})</span>`; return null; }
   $("lunarNote").textContent=`Âm lịch: ngày ${L.day} tháng ${L.month}${L.leap?" (nhuận)":""} năm ${L.year}`;
   return L;
 }
 
 function run(){
-  const dStr=$("date").value, tStr=$("time").value;
-  if(!dStr||!tStr){ alert("Vui lòng chọn ngày và giờ."); return; }
-  const [y,m,dd]=dStr.split("-").map(Number);
-  const [hh]=tStr.split(":").map(Number);
+  const {d:dd,m,y}=getSolar();
+  const hh=+$("hour").value;
   const L=convertSolar2Lunar(dd,m,y);
   if(!L){ showLunar(); $("result").classList.remove("show");
     alert(`Chỉ tra cứu được các năm từ ${LUNAR_MIN} đến ${LUNAR_MAX}.`); return; }
@@ -303,14 +311,42 @@ function slotHourOf(h){
   return base[idx];
 }
 
+/* ---- populate the Vietnamese date/time dropdowns ---- */
+function opt(val,label,sel){ return `<option value="${val}"${sel?" selected":""}>${label}</option>`; }
+function daysInMonth(m,y){ return new Date(y,m,0).getDate(); }
+
+function fillDays(keep){
+  const m=+$("month").value, y=+$("year").value;
+  const n=daysInMonth(m,y);
+  const cur=keep!=null?keep:(+$("day").value||1);
+  let html="";
+  for(let d=1; d<=n; d++) html+=opt(d,d,d===Math.min(cur,n));
+  $("day").innerHTML=html;
+}
+
 /* init */
 (function(){
   const now=new Date();
-  $("date").value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  $("time").value=`${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const Y=now.getFullYear(), M=now.getMonth()+1, D=now.getDate();
+  // month: "Tháng 1".."Tháng 12"
+  let mo=""; for(let m=1;m<=12;m++) mo+=opt(m,"Tháng "+m,m===M);
+  $("month").innerHTML=mo;
+  // year: supported lookup range
+  let yr=""; for(let y=LUNAR_MIN;y<=LUNAR_MAX;y++) yr+=opt(y,y,y===Y);
+  $("year").innerHTML=yr;
+  // days depend on month/year
+  fillDays(D);
+  // hour 0..23, minute 0..59 (24-giờ, không AM/PM)
+  let hr=""; for(let h=0;h<=23;h++) hr+=opt(h,pad(h),h===now.getHours());
+  $("hour").innerHTML=hr;
+  let mi=""; for(let n=0;n<=59;n++) mi+=opt(n,pad(n),n===now.getMinutes());
+  $("minute").innerHTML=mi;
+
   showLunar();
   $("calcBtn").addEventListener("click",run);
-  $("date").addEventListener("change",showLunar);
+  $("day").addEventListener("change",showLunar);
+  $("month").addEventListener("change",()=>{ fillDays(); showLunar(); });
+  $("year").addEventListener("change",()=>{ fillDays(); showLunar(); });
 })();
 </script>
 </body>
