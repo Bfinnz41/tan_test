@@ -196,18 +196,22 @@
       hint.classList.remove("error"); setupDone = false;
       setStatus("connecting", "Connecting…"); micBtn.disabled = true; micText.textContent = "Connecting…";
 
-      // 1. Ephemeral token from our server.
+      // 1. Ask for the MIC FIRST, before any other await. iOS/iPadOS Safari only
+      //    allows getUserMedia + AudioContext to start while the tap gesture is
+      //    still active; doing the token fetch first "uses up" the gesture and
+      //    Safari then blocks the mic ("request is not allowed by the user agent").
+      inCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      outCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+      inCtx.resume(); outCtx.resume();
+      outGain = outCtx.createGain(); outGain.gain.value = playAudio ? 1 : 0; outGain.connect(outCtx.destination);
+      nextStart = 0;
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
+
+      // 2. Ephemeral token from our server.
       const res = await fetch("/api/token", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "token request failed");
       const model = data.model || "gemini-3.5-live-translate-preview";
-
-      // 2. Audio contexts (input 16kHz, output 24kHz). Created on the Start tap so iOS allows them.
-      inCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-      outCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-      await inCtx.resume(); await outCtx.resume();
-      outGain = outCtx.createGain(); outGain.gain.value = playAudio ? 1 : 0; outGain.connect(outCtx.destination);
-      nextStart = 0;
 
       // 3. Open the Live API WebSocket with the token.
       ws = new WebSocket(WS_BASE + "?access_token=" + encodeURIComponent(data.token));
@@ -234,8 +238,7 @@
         showError("connection closed [" + (e.code || "?") + "]" + why);
       };
 
-      // 4. Mic capture -> 16kHz PCM16 -> WebSocket.
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
+      // 4. Wire mic capture -> 16kHz PCM16 -> WebSocket.
       const srcNode = inCtx.createMediaStreamSource(micStream);
       proc = inCtx.createScriptProcessor(4096, 1, 1);
       proc.onaudioprocess = (e) => {
