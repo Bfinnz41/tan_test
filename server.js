@@ -55,7 +55,7 @@ async function mintToken() {
   const body = {
     uses: 1,
     expireTime: new Date(now + 30 * 60 * 1000).toISOString(),        // token valid 30 min
-    newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),   // 1 min to open the session
+    newSessionExpireTime: new Date(now + 2 * 60 * 1000).toISOString(), // 2 min to open the session (survives cold starts)
   };
   // The REST collection name for auth tokens; try both spellings defensively.
   const urls = [

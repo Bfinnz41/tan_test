@@ -225,8 +225,14 @@
         }));
       };
       ws.onmessage = onWsMessage;
-      ws.onerror = () => showError("connection error");
-      ws.onclose = (e) => { if (running && !e.wasClean) showError("connection closed (" + (e.code || "?") + ")"); };
+      // Browsers hide WebSocket error detail; the CLOSE event carries the real
+      // code/reason (auth, quota, etc.), so prefer that.
+      ws.onerror = () => { if (running && !setupDone) showError("connection error (waiting for close reason…)"); };
+      ws.onclose = (e) => {
+        if (!running) return;
+        const why = e.reason ? " — " + e.reason : (e.code === 1006 ? " — abnormal (often quota/rate limit, token expiry, or too many sessions at once)" : "");
+        showError("connection closed [" + (e.code || "?") + "]" + why);
+      };
 
       // 4. Mic capture -> 16kHz PCM16 -> WebSocket.
       micStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
